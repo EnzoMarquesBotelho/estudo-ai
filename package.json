@@ -1,6 +1,6 @@
 {
   "name": "estudo-ai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "App desktop que gera resumos, mapas mentais e listas de exercícios a partir de uma pasta de estudos, usando IA local (Ollama). 100% local, sem nuvem.",
   "main": "src/main.js",
   "author": "",
@@ -53,8 +53,18 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "publisherName": "Estudo AI",
       "signAndEditExecutable": false
@@ -62,15 +72,37 @@
     "mac": {
       "category": "public.app-category.education",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "linux": {
       "category": "Education",
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "forceCodeSigning": false,
