@@ -1,0 +1,83 @@
+{
+  "name": "estudo-ai",
+  "version": "1.0.0",
+  "description": "App desktop que gera resumos, mapas mentais e listas de exercícios a partir de uma pasta de estudos, usando IA local (Ollama). 100% local, sem nuvem.",
+  "main": "src/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "copy:vendor": "node scripts/copy-vendor.js",
+    "postinstall": "node scripts/copy-vendor.js",
+    "build": "npm run copy:vendor && electron-builder",
+    "build:win": "npm run copy:vendor && electron-builder --win",
+    "build:mac": "npm run copy:vendor && electron-builder --mac",
+    "build:linux": "npm run copy:vendor && electron-builder --linux",
+    "build:portable": "npm run copy:vendor && electron-builder --win portable",
+    "test:models": "node tests/testar-modelos.js",
+    "test:frontend": "node tests/analise-frontend.js",
+    "test:visual": "node tests/validacao-visual.js"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "electron-updater": "^6.3.9",
+    "mammoth": "^1.8.0",
+    "mermaid": "^11.4.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "playwright": "^1.48.0"
+  },
+  "build": {
+    "appId": "com.domestico.estudoai",
+    "productName": "Estudo AI",
+    "copyright": "Uso doméstico e educacional. App 100% local.",
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "!tests/**/*",
+      "!scripts/**/*",
+      "!**/*.test.js",
+      "!dist/**/*"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "EnzoMarquesBotelho",
+        "repo": "estudo-ai",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "publisherName": "Estudo AI",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "linux": {
+      "category": "Education",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ]
+    },
+    "forceCodeSigning": false,
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

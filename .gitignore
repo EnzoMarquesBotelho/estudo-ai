@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Artefatos gerados pelos agentes de teste (ficam só na sua máquina)
+tests/screenshots/
+tests/bugs.json
+tests/relatorio-testes.md
+tests/relatorio-frontend.md
+
+# Biblioteca de terceiros copiada no build (regenerada por copy-vendor)
+src/renderer/vendor/
+
+# Scripts/logs temporários
+_*.ps1
+_*.txt

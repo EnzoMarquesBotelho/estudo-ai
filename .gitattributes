@@ -1,0 +1,3 @@
+# Garante que os scripts de shell usem quebras de linha LF (necessário no
+# macOS/Linux; CRLF quebra a execução com "bad interpreter").
+*.sh text eol=lf

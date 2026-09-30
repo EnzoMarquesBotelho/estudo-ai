@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; img-src 'self' data:;" />
+  <title>Estudo AI</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Barra lateral: notebooks e arquivos (estilo OneNote) -->
+    <aside id="sidebar">
+      <div class="brand">
+        <span class="logo">📚</span>
+        <span>Estudo AI</span>
+      </div>
+
+      <button id="pickFolderBtn" class="primary">Selecionar pasta de estudos</button>
+      <div id="folderPath" class="folder-path" title=""></div>
+
+      <div class="scope">
+        <label><input type="radio" name="scope" value="file" checked /> Arquivo selecionado</label>
+        <label><input type="radio" name="scope" value="all" /> Pasta inteira</label>
+      </div>
+
+      <div id="notebooks" class="notebooks"></div>
+
+      <div class="model-box">
+        <label class="model-label">Modelo de IA</label>
+        <select id="modelSelect" class="model-select" aria-label="Modelo de IA em uso"><option>—</option></select>
+        <details class="model-more">
+          <summary>Baixar outro modelo</summary>
+          <div class="model-download">
+            <select id="modelToPull" aria-label="Modelo para baixar">
+              <option value="qwen2.5:7b">qwen2.5:7b (recomendado p/ GPU 6GB, ~4.7GB)</option>
+              <option value="gemma2:9b">gemma2:9b (ótimo em PT, ~5.4GB)</option>
+              <option value="llama3.2:3b">llama3.2:3b (leve/rápido, ~2GB)</option>
+              <option value="llama3.1">llama3.1 (equilibrado, ~4.7GB)</option>
+              <option value="qwen2.5:14b">qwen2.5:14b (forte, exige GPU 10GB+)</option>
+            </select>
+            <button id="pullModelBtn" class="ghost">Baixar</button>
+          </div>
+          <div id="pullProgress" class="pull-progress" style="display:none">
+            <div class="pull-bar"><div id="pullFill" class="pull-fill"></div></div>
+            <span id="pullMsg" class="pull-msg"></span>
+          </div>
+        </details>
+      </div>
+
+      <div class="ai-status" id="aiStatus">Verificando IA…</div>
+    </aside>
+
+    <!-- Área principal -->
+    <main id="main">
+      <header id="topbar">
+        <div id="currentTitle" class="current-title">Nenhum arquivo selecionado</div>
+        <div class="tabs" role="tablist" aria-label="Seções">
+          <button class="tab active" data-tab="summary" role="tab" aria-selected="true">Resumo</button>
+          <button class="tab" data-tab="mindmap" role="tab" aria-selected="false">Mapa Mental</button>
+          <button class="tab" data-tab="exercises" role="tab" aria-selected="false">Exercícios</button>
+        </div>
+      </header>
+
+      <!-- Painel: Resumo -->
+      <section class="panel active" id="panel-summary">
+        <div class="toolbar">
+          <select id="summaryLevel" aria-label="Nível de detalhe do resumo">
+            <option value="curto">Resumo curto</option>
+            <option value="médio" selected>Resumo médio</option>
+            <option value="detalhado">Resumo detalhado</option>
+          </select>
+          <button id="genSummary" class="primary">Gerar resumo</button>
+          <button id="exportSummary" class="ghost">Exportar</button>
+        </div>
+        <div id="summaryOutput" class="output markdown"></div>
+      </section>
+
+      <!-- Painel: Mapa Mental -->
+      <section class="panel" id="panel-mindmap">
+        <div class="toolbar">
+          <button id="genMindmap" class="primary">Gerar mapa mental</button>
+          <button id="exportMindmap" class="ghost">Exportar</button>
+        </div>
+        <div id="mindmapOutput" class="output mindmap"></div>
+      </section>
+
+      <!-- Painel: Exercícios -->
+      <section class="panel" id="panel-exercises">
+        <div class="toolbar">
+          <select id="exQtd" aria-label="Quantidade de questões">
+            <option>3</option><option selected>5</option><option>8</option><option>10</option>
+          </select>
+          <select id="exTipo" aria-label="Tipo de questões">
+            <option value="mistas" selected>Questões mistas</option>
+            <option value="multipla">Múltipla escolha</option>
+            <option value="dissertativa">Dissertativas</option>
+          </select>
+          <button id="genExercises" class="primary">Gerar exercícios</button>
+          <button id="exportExercises" class="ghost">Exportar</button>
+        </div>
+        <div id="exercisesOutput" class="output markdown"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Tela de auto-setup (primeira execução) -->
+  <div id="setupOverlay" class="setup-overlay" style="display:none">
+    <div class="setup-card">
+      <div class="setup-logo">📚</div>
+      <h1 id="setupTitle">Preparando o Estudo AI</h1>
+      <p id="setupMessage" class="setup-message">Verificando a IA local…</p>
+
+      <div class="setup-progress-wrap" id="setupProgressWrap" style="display:none">
+        <div class="setup-progress-bar"><div id="setupProgressFill" class="setup-progress-fill"></div></div>
+        <div id="setupPercent" class="setup-percent">0%</div>
+      </div>
+
+      <div class="setup-steps">
+        <div class="setup-step" id="step-ollama"><span class="dot"></span> Instalar a IA local (Ollama)</div>
+        <div class="setup-step" id="step-model"><span class="dot"></span> Baixar o modelo de linguagem</div>
+      </div>
+
+      <button id="setupStartBtn" class="primary" style="display:none">Instalar automaticamente</button>
+      <button id="setupRetryBtn" class="ghost" style="display:none">Tentar de novo</button>
+      <p id="setupNote" class="setup-note">Isso só acontece na primeira vez. Precisa de internet agora; depois funciona offline.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="vendor/mermaid.min.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+Teorema de Thévenin
+
+Qualquer circuito linear de dois terminais pode ser substituído por uma fonte
+de tensão equivalente (Vth) em série com uma resistência equivalente (Rth).
+
+Passos para encontrar o equivalente de Thévenin:
+1. Remover a carga dos dois terminais de interesse.
+2. Calcular a tensão de circuito aberto entre os terminais: essa e a Vth.
+3. Desligar as fontes independentes (curto nas de tensao, aberto nas de corrente)
+   e calcular a resistencia vista dos terminais: essa e a Rth.
+4. Redesenhar o circuito como Vth em serie com Rth ligada a carga.
+
+Teorema de Norton: analogo, mas usa uma fonte de corrente (In) em paralelo com Rth.
+Relacao: Vth = In * Rth.
+
+Aplicacao tipica: simplificar a analise quando so interessa o comportamento
+visto por uma carga especifica, evitando recalcular o circuito inteiro a cada
+mudanca de carga.

@@ -1,0 +1,17 @@
+Transformacao de Fontes
+
+A transformacao de fontes permite converter uma fonte de tensao real (Vs em
+serie com Rs) em uma fonte de corrente real equivalente (Is em paralelo com Rs),
+e vice-versa, sem alterar o comportamento visto pelo resto do circuito.
+
+Relacoes:
+- Is = Vs / Rs
+- Vs = Is * Rs
+- A resistencia Rs e a mesma nos dois modelos.
+
+Quando usar:
+- Simplificar circuitos com varias fontes antes de aplicar analise de nos ou malhas.
+- Combinar fontes em paralelo (correntes) ou em serie (tensoes) mais facilmente.
+
+Observacao: a transformacao so vale para os terminais externos; as grandezas
+internas (corrente em Rs, por exemplo) mudam entre os dois modelos.
