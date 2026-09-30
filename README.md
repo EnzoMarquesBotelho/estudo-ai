@@ -199,30 +199,15 @@ As imagens ficam em `tests/screenshots/` e o resultado é anexado ao
 - **Usuário (executável limpo):** o build **não inclui** `tests/` nem `scripts/`
   (veja `files` no `package.json`) — o usuário recebe só o app.
 
-### Auto-atualização do app do usuário
+### Distribuir uma nova versão (manual, sem auto-update)
 
-O app usa `electron-updater`. Para funcionar, publique cada versão em um
-**GitHub Releases** (ou outro provedor). Passos:
+O app **não** tem auto-atualização. Para distribuir uma versão nova:
 
-1. O `package.json` já aponta para `EnzoMarquesBotelho/estudo-ai` em `build.publish`.
-2. Suba o código para um repositório GitHub chamado `estudo-ai` (na conta EnzoMarquesBotelho).
-3. Publique com o script pronto (Windows), definindo o token **só no terminal**:
-   ```powershell
-   $env:GH_TOKEN = "seu_token"     # nunca cole o token em arquivos nem em prints
-   .\publicar-release.ps1          # sobe a versão (patch) e publica no GitHub Releases
-   ```
-   Variações: `.\publicar-release.ps1 -Tipo minor`, `-Tipo major`, ou
-   `-SemVersion` (publica a versão atual sem incrementar).
-4. Cada vez que você publicar uma versão maior, os apps instalados
-   **baixam e aplicam a atualização automaticamente** (aviso na tela).
+1. Gere o executável: `npm run build:win` (o instalador e o portátil ficam em `dist/`).
+2. Compartilhe o `.exe` gerado com quem for usar (ou publique no GitHub Releases
+   manualmente, se quiser um lugar central para download).
 
-> **Segurança do token:** o `GH_TOKEN` é como uma senha. Defina-o apenas na
-> variável de ambiente do terminal na hora de publicar. Nunca o coloque em
-> nenhum arquivo do projeto nem o compartilhe — se vazar, revogue em
-> github.com/settings/tokens e gere outro.
-
-> Sem publicar, o app funciona normalmente — só não recebe atualizações
-> automáticas (a verificação apenas não encontra nada e é ignorada).
+Cada pessoa baixa e instala a versão nova por conta própria.
 
 ## Privacidade
 

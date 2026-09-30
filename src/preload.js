@@ -60,10 +60,4 @@ contextBridge.exposeInMainWorld('api', {
   getModel: () => ipcRenderer.invoke('model:get'),
   setModel: (model) => ipcRenderer.invoke('model:set', model),
   pullModel: (model) => ipcRenderer.invoke('model:pull', model),
-
-  // Auto-atualização (avisos)
-  onUpdateStatus: (cb) => {
-    ipcRenderer.removeAllListeners('update:status');
-    ipcRenderer.on('update:status', (_e, data) => cb(data));
-  },
 });

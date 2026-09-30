@@ -10,7 +10,6 @@ const watcher = require('./services/watcher');
 const ai = require('./services/ai');
 const exporter = require('./services/exporter');
 const setup = require('./services/setup');
-const updater = require('./services/updater');
 
 let mainWindow = null;
 
@@ -48,8 +47,6 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  // Auto-atualização (só quando empacotado e com "publish" configurado).
-  updater.init(app, () => mainWindow, console);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

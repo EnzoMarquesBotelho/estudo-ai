@@ -678,9 +678,6 @@ function finishSetup(ui) {
 (async function init() {
   bindEvents();
 
-  // Avisos de auto-atualização (quando empacotado e publicado).
-  window.api.onUpdateStatus((d) => toast(d.msg, d.severity || 'info'));
-
   // Primeiro garante que a IA local está pronta (auto-setup).
   await runSetup();
 
