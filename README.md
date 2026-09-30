@@ -206,13 +206,20 @@ O app usa `electron-updater`. Para funcionar, publique cada versão em um
 
 1. O `package.json` já aponta para `EnzoMarquesBotelho/estudo-ai` em `build.publish`.
 2. Suba o código para um repositório GitHub chamado `estudo-ai` (na conta EnzoMarquesBotelho).
-3. Gere e publique com o token do GitHub:
-   ```bash
-   set GH_TOKEN=seu_token   # (Windows)  |  export GH_TOKEN=... (mac/linux)
-   npx electron-builder --win --publish always
+3. Publique com o script pronto (Windows), definindo o token **só no terminal**:
+   ```powershell
+   $env:GH_TOKEN = "seu_token"     # nunca cole o token em arquivos nem em prints
+   .\publicar-release.ps1          # sobe a versão (patch) e publica no GitHub Releases
    ```
-4. Cada vez que você aumentar a `version` no `package.json` e publicar, os apps
-   instalados **baixam e aplicam a atualização automaticamente** (aviso na tela).
+   Variações: `.\publicar-release.ps1 -Tipo minor`, `-Tipo major`, ou
+   `-SemVersion` (publica a versão atual sem incrementar).
+4. Cada vez que você publicar uma versão maior, os apps instalados
+   **baixam e aplicam a atualização automaticamente** (aviso na tela).
+
+> **Segurança do token:** o `GH_TOKEN` é como uma senha. Defina-o apenas na
+> variável de ambiente do terminal na hora de publicar. Nunca o coloque em
+> nenhum arquivo do projeto nem o compartilhe — se vazar, revogue em
+> github.com/settings/tokens e gere outro.
 
 > Sem publicar, o app funciona normalmente — só não recebe atualizações
 > automáticas (a verificação apenas não encontra nada e é ignorada).

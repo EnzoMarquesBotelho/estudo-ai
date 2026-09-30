@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^26.0.0",
     "playwright": "^1.48.0"
   },
   "build": {
@@ -66,8 +66,7 @@
           ]
         }
       ],
-      "publisherName": "Estudo AI",
-      "signAndEditExecutable": false
+      "publisherName": "Estudo AI"
     },
     "mac": {
       "category": "public.app-category.education",
