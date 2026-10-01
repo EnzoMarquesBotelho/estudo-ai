@@ -14,6 +14,9 @@ const state = {
   scopeTarget: null,    // { kind:'disciplina', id } | { kind:'topico', discId, id }
   groupNovos: [],       // arquivos novos detectados (incremental)
   groupRemovidos: [],   // paths removidos detectados (incremental)
+  ragStatus: null,      // status do índice RAG (ou null)
+  askScope: 'pasta',    // 'pasta' | 'disciplina'
+  askDiscId: null,      // id da disciplina quando askScope === 'disciplina'
 };
 
 // ------------------------------ Helpers ------------------------------
@@ -135,6 +138,8 @@ async function loadLibrary(folder) {
   }
   await loadGrouping(state.root);
   renderSidebar();
+  populateAskScope();
+  refreshAskStatus();
 }
 
 function renderNotebooks() {
@@ -924,6 +929,203 @@ async function pullNewModel() {
   }
 }
 
+// ------------------------------ Perguntar (RAG local) ------------------------------
+
+// Metadados leves de todos os arquivos no disco (sem texto) — barato.
+function scannedPathsAtuais() {
+  return state.notebooks.flatMap((n) => n.files).map((f) => ({ path: f.path, mtime: f.mtime, size: f.size }));
+}
+
+// Monta a lista de arquivos para indexar. INCLUI o arquivo mesmo quando a
+// leitura falha (text:''), em vez de descartá-lo — não reusa o filtro de
+// gatherFiles. Retorna { ok, files, scannedPaths } ou { ok:false, error }.
+async function gatherFilesForIndex() {
+  const allFiles = state.notebooks.flatMap((n) => n.files);
+  if (!allFiles.length) return { ok: false, error: 'A pasta não tem arquivos.' };
+  const scannedPaths = scannedPathsAtuais();
+  const files = [];
+  for (const f of allFiles) {
+    const r = await window.api.readFile(f.path);
+    files.push({
+      name: (r && r.name) || basenameFromPath(f.path),
+      text: r && r.ok && r.text ? r.text : '',
+      path: f.path,
+      mtime: f.mtime,
+      size: f.size,
+    });
+  }
+  return { ok: true, files, scannedPaths };
+}
+
+// Popula o seletor de escopo com "Pasta inteira" + disciplinas do mapeamento.
+function populateAskScope() {
+  const sel = $('#askScope');
+  if (!sel) return;
+  const disciplinas = (state.grouping && state.grouping.disciplinas) || [];
+  let html = '<option value="pasta">Pasta inteira</option>';
+  for (const d of disciplinas) {
+    html += `<option value="disc:${d.id}">${escapeHtml(d.nome)}</option>`;
+  }
+  sel.innerHTML = html;
+  // Mantém a seleção atual quando possível.
+  if (state.askScope === 'disciplina' && state.askDiscId) {
+    sel.value = 'disc:' + state.askDiscId;
+    if (sel.value !== 'disc:' + state.askDiscId) { state.askScope = 'pasta'; state.askDiscId = null; sel.value = 'pasta'; }
+  } else {
+    sel.value = 'pasta';
+  }
+}
+
+// Atualiza a linha de status do índice (lê só o cabeçalho leve, barato).
+async function refreshAskStatus() {
+  const el = $('#askStatus');
+  if (!el || !state.root) return;
+  const status = await window.api.ragStatus({ folder: state.root, scannedPaths: scannedPathsAtuais() });
+  state.ragStatus = status;
+
+  if (!status || !status.exists) {
+    el.textContent = 'Sem índice — clique em Indexar';
+    return;
+  }
+  let txt = `Índice: ${status.arquivos} arquivos · ${status.chunks} trechos · ${status.modeloEmbedding || ''}`;
+  if (status.pendentes) txt += ` — ${status.pendentes} pendentes, reindexe`;
+  el.textContent = txt;
+}
+
+// Mostra progresso da indexação (molde de bindGroupingProgress).
+function bindRagProgress(container) {
+  window.api.onRagProgress((p) => {
+    const pct = p.total ? Math.round(((p.current || 0) / p.total) * 100) : 0;
+    container.innerHTML =
+      `<div class="placeholder" style="margin-top:0">Indexando material…` +
+      `<br><small>${escapeHtml(p.name || '')} (${p.current || 0}/${p.total || 0})</small>` +
+      `<div class="setup-progress-bar" style="margin-top:10px"><div class="setup-progress-fill" style="width:${pct}%"></div></div></div>`;
+  });
+}
+
+// Oferece o download do modelo de embedding ausente, reusando onSetupProgress.
+function offerEmbedModelDownload() {
+  const el = $('#askStatus');
+  if (!el) return;
+  el.innerHTML = `Modelo de embedding ausente. <button id="askPullBtn" class="ghost small">Baixar nomic-embed-text</button>`;
+  const btn = $('#askPullBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Baixando…';
+    window.api.onSetupProgress((p) => {
+      if (p.phase === 'model') btn.textContent = `Baixando ${p.percent || 0}%`;
+    });
+    const res = await window.api.pullModel('nomic-embed-text');
+    if (res && res.ok) {
+      toast('Modelo nomic-embed-text pronto', 'success');
+      await refreshAskStatus();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Baixar nomic-embed-text';
+      toast('Erro ao baixar: ' + ((res && res.error) || 'falha'), 'error');
+    }
+  });
+}
+
+// Indexa a pasta. { fromScratch }
+async function doIndex({ fromScratch = false } = {}) {
+  if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
+  const progress = $('#askProgress');
+  const indexBtn = $('#askIndexBtn');
+  const reindexBtn = $('#askReindexBtn');
+
+  const coletado = await gatherFilesForIndex();
+  if (!coletado.ok) return toast(coletado.error, 'error');
+
+  indexBtn.disabled = true;
+  reindexBtn.disabled = true;
+  progress.className = 'group-progress show';
+  progress.innerHTML = '<div class="placeholder" style="margin-top:0">Preparando…</div>';
+  bindRagProgress(progress);
+
+  const res = await window.api.ragIndex({
+    folder: state.root,
+    files: coletado.files,
+    scannedPaths: coletado.scannedPaths,
+    fromScratch,
+  });
+
+  indexBtn.disabled = false;
+  reindexBtn.disabled = false;
+  progress.className = 'group-progress';
+  progress.innerHTML = '';
+
+  if (!res || !res.ok) {
+    if (res && res.error === 'EMBED_MODEL_AUSENTE') {
+      offerEmbedModelDownload();
+      return;
+    }
+    return toast((res && res.error) || 'Falha ao indexar.', 'error');
+  }
+  toast(`Índice pronto: ${res.reindexados} arquivo(s) processado(s)`, 'success');
+  await refreshAskStatus();
+}
+
+// Faz uma pergunta sobre o acervo.
+async function doAsk() {
+  if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
+  const pergunta = ($('#askInput').value || '').trim();
+  if (!pergunta) return toast('Digite uma pergunta.', 'error');
+
+  const out = $('#askOutput');
+  const sources = $('#askSources');
+  sources.innerHTML = '';
+  spinner(out, 'Buscando no seu material…');
+
+  const res = await window.api.ragAsk({
+    folder: state.root,
+    pergunta,
+    scope: state.askScope,
+    discId: state.askDiscId,
+  });
+
+  if (!res || !res.ok) {
+    if (res && res.error === 'SEM_INDICE') {
+      placeholder(out, 'Indexe o material primeiro (botão Indexar).');
+      return;
+    }
+    if (res && res.error === 'EMBED_MODEL_AUSENTE') {
+      placeholder(out, 'O modelo de embedding não está instalado. Clique em Indexar para baixá-lo.');
+      offerEmbedModelDownload();
+      return;
+    }
+    placeholder(out, '⚠️ ' + ((res && res.error) || 'Falha ao responder.'));
+    return;
+  }
+
+  out.innerHTML = renderMarkdown(res.resposta || '');
+  renderSources(res.fontes || []);
+}
+
+// Desenha as fontes citadas (clicáveis — abrem o arquivo no sistema).
+function renderSources(fontes) {
+  const wrap = $('#askSources');
+  wrap.innerHTML = '';
+  if (!fontes.length) return;
+  const titulo = document.createElement('div');
+  titulo.className = 'ask-sources-title';
+  titulo.textContent = 'Fontes';
+  wrap.appendChild(titulo);
+  for (const f of fontes) {
+    const nome = basenameFromPath(f.path);
+    const item = document.createElement('div');
+    item.className = 'source-item';
+    item.title = f.path;
+    item.innerHTML = `<span class="source-name">📄 ${escapeHtml(nome)}</span><span class="source-trecho">${escapeHtml(f.trechoCurto || '')}</span>`;
+    item.addEventListener('click', async () => {
+      const r = await window.api.ragOpenSource({ folder: state.root, path: f.path });
+      if (!r || !r.ok) toast((r && r.error) || 'Não consegui abrir o arquivo.', 'error');
+    });
+    wrap.appendChild(item);
+  }
+}
+
 // ------------------------------ Eventos ------------------------------
 function bindEvents() {
   $('#pickFolderBtn').addEventListener('click', async () => {
@@ -958,6 +1160,21 @@ function bindEvents() {
   $('#genSummary').addEventListener('click', doSummary);
   $('#genMindmap').addEventListener('click', doMindmap);
   $('#genExercises').addEventListener('click', doExercises);
+
+  // Perguntar (RAG local).
+  $('#askIndexBtn').addEventListener('click', () => doIndex({ fromScratch: false }));
+  $('#askReindexBtn').addEventListener('click', () => doIndex({ fromScratch: true }));
+  $('#askBtn').addEventListener('click', doAsk);
+  $('#askScope').addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (v && v.startsWith('disc:')) {
+      state.askScope = 'disciplina';
+      state.askDiscId = v.slice('disc:'.length);
+    } else {
+      state.askScope = 'pasta';
+      state.askDiscId = null;
+    }
+  });
 
   $('#exportSummary').addEventListener('click', () => exportKind('summary'));
   $('#exportMindmap').addEventListener('click', () => exportKind('mindmap'));

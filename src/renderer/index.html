@@ -103,6 +103,7 @@
           <button class="tab active" data-tab="summary" role="tab" aria-selected="true">Resumo</button>
           <button class="tab" data-tab="mindmap" role="tab" aria-selected="false">Mapa Mental</button>
           <button class="tab" data-tab="exercises" role="tab" aria-selected="false">Exercícios</button>
+          <button class="tab" data-tab="ask" role="tab" aria-selected="false">Perguntar</button>
         </div>
       </header>
 
@@ -150,6 +151,25 @@
           <button id="exportExercises" class="ghost">Exportar</button>
         </div>
         <div id="exercisesOutput" class="output markdown"></div>
+      </section>
+
+      <!-- Painel: Perguntar (RAG local) -->
+      <section class="panel" id="panel-ask">
+        <div class="toolbar">
+          <select id="askScope" aria-label="Escopo da pergunta">
+            <option value="pasta" selected>Pasta inteira</option>
+          </select>
+          <button id="askIndexBtn" class="primary">Indexar</button>
+          <button id="askReindexBtn" class="ghost small">Reindexar do zero</button>
+          <span id="askStatus" class="ask-status">Sem índice — clique em Indexar</span>
+        </div>
+        <div id="askProgress" class="group-progress"></div>
+        <div class="toolbar">
+          <textarea id="askInput" placeholder="Faça uma pergunta sobre o seu material…" rows="3"></textarea>
+          <button id="askBtn" class="primary">Perguntar</button>
+        </div>
+        <div id="askOutput" class="output markdown"></div>
+        <div id="askSources"></div>
       </section>
     </main>
   </div>

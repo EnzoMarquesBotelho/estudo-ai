@@ -185,6 +185,53 @@ na mão ou reagrupa. Já se o Ollama estiver **totalmente offline** logo no come
 o agrupamento por conteúdo é **cancelado** e nada é salvo (o modo **por pasta**,
 que não usa IA, continua funcionando offline).
 
+## ❓ Perguntar sobre o acervo (RAG local)
+
+A aba **Perguntar** deixa você fazer **perguntas em linguagem natural** sobre o
+seu material e receber uma resposta **fundamentada apenas no conteúdo da pasta**,
+com **citação das fontes** (o arquivo e um trecho de onde veio a informação).
+Tudo roda localmente, usando os embeddings do Ollama — nenhum dado sai da máquina.
+
+> **Seus arquivos de estudo nunca são tocados.** A indexação **não move, não
+> renomeia e não apaga** nada. O índice (os vetores de busca) é gravado só na
+> pasta de dados do app, junto das suas configurações. Os arquivos originais
+> ficam exatamente onde estão.
+
+### Como usar
+
+1. Na aba **Perguntar**, clique em **Indexar**. O app lê os arquivos da pasta,
+   divide o texto em trechos e gera os embeddings via Ollama, mostrando o
+   progresso. Ao terminar, o status informa quantos arquivos e trechos foram
+   indexados e qual o modelo de embedding usado.
+2. (Opcional) Escolha o **escopo** da pergunta: a **pasta inteira** ou uma
+   **disciplina** específica (reaproveitando o agrupamento da aba de disciplinas).
+3. Digite a pergunta e clique em **Perguntar**. A resposta aparece em Markdown e,
+   abaixo, a lista de **fontes citadas** — clique numa fonte para abrir o arquivo
+   no sistema.
+
+### Indexação sob demanda e incremental
+
+A indexação é **sob demanda** (nunca automática ao abrir a pasta). Ela é
+**incremental**: ao reindexar, só os arquivos **novos ou alterados** são
+reprocessados (detectados por data de modificação + tamanho), e os que sumiram do
+disco são removidos do índice. Um arquivo que ficou ilegível fica **pendente**
+(não some silenciosamente). Há também **Reindexar do zero**, que descarta o índice
+e recria tudo.
+
+### Modelo de embedding
+
+A busca usa o modelo **`nomic-embed-text`** (leve, bom em português). Se ele não
+estiver instalado, o app oferece um botão para **baixá-lo** (com barra de
+progresso), reusando o mesmo fluxo de download dos outros modelos. A **resposta
+final** é gerada pelo modelo de IA que você já escolheu na barra lateral.
+
+### Anti-alucinação e fontes
+
+O prompt instrui o modelo a responder **somente** com base nos trechos
+recuperados e a dizer claramente quando a resposta **não está** no material. As
+fontes exibidas são sempre os trechos realmente consultados — inclusive quando a
+resposta é "não encontrei isso no material".
+
 ## 🔄 Atualizar o app
 
 O app verifica sozinho se há uma versão mais nova no GitHub e avisa dentro da

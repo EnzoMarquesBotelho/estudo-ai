@@ -9,6 +9,7 @@ const library = require('./services/library');
 const watcher = require('./services/watcher');
 const ai = require('./services/ai');
 const grouping = require('./services/grouping');
+const rag = require('./services/rag');
 const exporter = require('./services/exporter');
 const setup = require('./services/setup');
 const updater = require('./services/updater');
@@ -325,6 +326,124 @@ ipcMain.handle('grouping:suggestMode', async (_evt, folder) => {
   const root = resolveFolder(folder);
   if (!root) return { ok: false, error: 'Pasta inválida.' };
   return grouping.suggestMode(library.scan(root));
+});
+
+// ---- RAG (Fase 2) — Perguntar sobre o acervo (100% local) ----
+// Progresso da indexação (mesmo guarda de sendGroupingProgress).
+function sendRagProgress(p) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('rag:progress', p);
+  }
+}
+
+// Injetores das chamadas ao Ollama para o núcleo rag.js. A temperature:0.2
+// (anti-alucinação) vive SÓ aqui — rag.ask não a conhece.
+const ragEmbed = (textos) => ai.embed(textos, { model: ai.DEFAULT_EMBED_MODEL });
+const ragGenerate = (prompt, opts = {}) =>
+  ai.generate(prompt, { model: store.get('model') || undefined, numPredict: 1200, temperature: 0.2, ...opts });
+
+// Calcula quantos arquivos estão pendentes de (re)indexação lendo SÓ o
+// .meta.json (nunca o índice completo). O meta carrega fileSignatures.
+function calcPendentes(folder, scannedPaths) {
+  const meta = rag.loadMeta(folder);
+  if (!meta) return 0;
+  const metaIndex = { fileSignatures: meta.fileSignatures || {} };
+  const scan = Array.isArray(scannedPaths) ? scannedPaths : [];
+  const diff = rag.diffForIndex(metaIndex, { scannedPaths: scan, files: scan });
+  return diff.novos.length + diff.alterados.length + diff.removidos.length;
+}
+
+// Status do índice. Combina indexStatus (.meta.json), checkStatus e calcPendentes.
+// Shape normativo único (design §2.5). exists:false => pendentes:0.
+ipcMain.handle('rag:status', async (_evt, { folder, scannedPaths } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { exists: false, arquivos: 0, chunks: 0, modeloEmbedding: null, dim: null, generatedAt: null, embedModelInstalled: false, pendentes: 0 };
+
+  const meta = rag.indexStatus(root);
+  const status = await ai.checkStatus();
+  const embedModelInstalled = !!(status.ok && rag.hasEmbedModel(status.models, ai.DEFAULT_EMBED_MODEL));
+  const pendentes = meta.exists ? calcPendentes(root, scannedPaths) : 0;
+  return Object.assign({}, meta, { embedModelInstalled, pendentes });
+});
+
+// Indexa a pasta. args: { folder, files, scannedPaths, fromScratch }.
+ipcMain.handle('rag:index', async (_evt, { folder, files, scannedPaths, fromScratch } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+
+  // Pré-condição na ORDEM NORMATIVA: checar status.ok ANTES de embedModelInstalled.
+  const status = await ai.checkStatus();
+  if (!status.ok) {
+    return { ok: false, error: 'Ollama não está rodando. Abra o Ollama e tente de novo.' };
+  }
+  if (!rag.hasEmbedModel(status.models, ai.DEFAULT_EMBED_MODEL)) {
+    return { ok: false, error: 'EMBED_MODEL_AUSENTE' };
+  }
+
+  // Validação de entradas: files aceita text:'' (arquivo ilegível).
+  const validFiles = (files || []).filter((f) => f && typeof f.path === 'string' && typeof f.text === 'string');
+  const validScan = (scannedPaths || []).filter((s) => s && typeof s.path === 'string');
+  if (!validFiles.length && !validScan.length) {
+    return { ok: false, error: 'A pasta não tem arquivos.' };
+  }
+
+  try {
+    return await rag.indexFiles({
+      rootFolder: root,
+      files: validFiles,
+      scannedPaths: validScan,
+      fromScratch: !!fromScratch,
+      embed: ragEmbed,
+      embedModel: ai.DEFAULT_EMBED_MODEL,
+      onProgress: sendRagProgress,
+    });
+  } catch (e) {
+    console.warn('[rag:index] falhou:', e && e.message);
+    return { ok: false, error: (e && e.message) || 'Falha ao indexar.' };
+  }
+});
+
+// Responde a uma pergunta. args: { folder, pergunta, scope, discId? }.
+ipcMain.handle('rag:ask', async (_evt, { folder, pergunta, scope, discId } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+
+  let texto = typeof pergunta === 'string' ? pergunta.trim() : '';
+  if (!texto) return { ok: false, error: 'Digite uma pergunta.' };
+  if (texto.length > rag.MAX_PERGUNTA_CHARS) texto = texto.slice(0, rag.MAX_PERGUNTA_CHARS);
+
+  let scopePaths = null;
+  if (scope === 'disciplina') {
+    const mapping = grouping.loadMapping(root);
+    const disc = mapping && (mapping.disciplinas || []).find((d) => d.id === discId);
+    if (!disc) return { ok: false, error: 'Disciplina não encontrada.' };
+    scopePaths = disc.arquivos || [];
+  }
+
+  try {
+    return await rag.ask({ rootFolder: root, pergunta: texto, scopePaths, embed: ragEmbed, generate: ragGenerate });
+  } catch (e) {
+    console.warn('[rag:ask] falhou:', e && e.message);
+    return { ok: false, error: (e && e.message) || 'Falha ao responder.' };
+  }
+});
+
+// Abre o arquivo de uma fonte citada. args: { folder, path }.
+// Valida contra o .meta.json da pasta corrente (não abre caminho arbitrário).
+ipcMain.handle('rag:openSource', async (_evt, { folder, path: filePath } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+
+  const meta = rag.loadMeta(root);
+  const conhecidos = new Set((meta && meta.paths) || []);
+  const alvo = path.normalize(String(filePath || ''));
+  const casa = conhecidos.has(filePath) || Array.from(conhecidos).some((p) => path.normalize(p) === alvo);
+  if (!casa) {
+    console.warn('[rag:openSource] path fora do índice:', filePath);
+    return { ok: false, error: 'Arquivo não encontrado.' };
+  }
+  const err = await shell.openPath(filePath);
+  return err ? { ok: false, error: err } : { ok: true };
 });
 
 // ---- Exportação / compartilhamento ----

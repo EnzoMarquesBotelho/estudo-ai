@@ -13,8 +13,12 @@
  */
 
 const store = require('./store');
+const { normalizeEmbedResponse } = require('./rag');
 
 const OLLAMA_URL = 'http://127.0.0.1:11434';
+
+// Modelo de embedding padrão (Fase 2 — RAG). Leve (~274MB, 768 dim), bom em PT.
+const DEFAULT_EMBED_MODEL = 'nomic-embed-text';
 // Modelo padrão. Pode ser trocado pela UI. llama3.1 é um bom equilíbrio.
 // Modelo padrão: qwen2.5:7b — cabe na VRAM de GPUs de 6GB (ex.: GTX 1660),
 // roda rápido e estável, e é ótimo em português. Modelos 14B costumam travar
@@ -544,6 +548,150 @@ async function generateExercisesFolder(files, options = {}, onProgress) {
   return generateExercises(condensar(parciais), options);
 }
 
+// ==========================================================================
+// EMBEDDINGS (Fase 2 — RAG)
+// Detecção de endpoint: /api/embed (campo `input`, aceita array) nas versões
+// recentes; fallback /api/embeddings (campo `prompt`, string única) nas antigas.
+// A escolha é memoizada por processo. normalizeEmbedResponse (de ./rag) cobre
+// os formatos de resposta de forma defensiva.
+// ==========================================================================
+
+// Memoização por processo (resetável para testes).
+let embedEndpoint = null;   // '/api/embed' | '/api/embeddings' | null (não detectado)
+let embedBatchOk = true;    // false quando o lote devolve menos vetores que entradas
+
+// Mensagem única para "modelo de embedding ausente".
+function erroEmbedModelAusente() {
+  return `Modelo de embedding "${DEFAULT_EMBED_MODEL}" não está instalado. Clique em "Baixar ${DEFAULT_EMBED_MODEL}" ou rode: ollama pull ${DEFAULT_EMBED_MODEL}`;
+}
+
+// Faz uma chamada bruta de embedding a um endpoint. Retorna
+// { ok:true, vetores } | { ok:false, kind, error }. kind:
+//   'offline'    -> não conseguiu falar com o Ollama (prefixo literal)
+//   'modelo'     -> 404/erro com "not found"/"no such model"
+//   'endpoint'   -> 404 de endpoint inexistente (sugere fallback)
+//   'formato'    -> resposta em formato inesperado
+//   'http'       -> 500/outros, traduzido
+async function callEmbed(endpoint, body, signal) {
+  let res;
+  try {
+    res = await fetch(`${OLLAMA_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      kind: 'offline',
+      error: 'Ollama não está rodando. Abra o Ollama e tente de novo.' + (e && e.message ? ` (${e.message})` : ''),
+    };
+  }
+
+  if (!res.ok) {
+    let detalhe = '';
+    try { detalhe = (await res.json()).error || ''; } catch {
+      try { detalhe = await res.text(); } catch {}
+    }
+    if (res.status === 404) {
+      // Desambiguação: 404 por modelo ausente vs. endpoint inexistente.
+      if (/not found|no such model/i.test(detalhe)) {
+        return { ok: false, kind: 'modelo', error: erroEmbedModelAusente() };
+      }
+      return { ok: false, kind: 'endpoint', error: traduzErro(404, detalhe) };
+    }
+    return { ok: false, kind: 'http', error: traduzErro(res.status, detalhe) };
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    return { ok: false, kind: 'formato', error: 'Resposta de embedding em formato inesperado.' };
+  }
+  try {
+    return { ok: true, vetores: normalizeEmbedResponse(data) };
+  } catch (e) {
+    return { ok: false, kind: 'formato', error: (e && e.message) || 'Resposta de embedding em formato inesperado.' };
+  }
+}
+
+// Embedding de um array de textos. Retorna { ok:true, vetores:number[][] } (na
+// mesma ordem das entradas) ou { ok:false, error }.
+// - detecção /api/embed -> fallback /api/embeddings (memoizada);
+// - degradação de lote para item-a-item quando a contagem de vetores diverge;
+// - offline com prefixo literal "Ollama não está rodando";
+// - modelo ausente com mensagem clara; sem retry por lote.
+async function embed(textos, { model, signal } = {}) {
+  const lista = Array.isArray(textos) ? textos : [textos];
+  if (!lista.length) return { ok: true, vetores: [] };
+  const modelo = model || DEFAULT_EMBED_MODEL;
+
+  // Caminho item-a-item: uma chamada por texto. Usado como fallback de endpoint,
+  // ou quando o lote de /api/embed se mostrou não-confiável (embedBatchOk=false).
+  async function itemAitem() {
+    const vetores = [];
+    for (const texto of lista) {
+      // Prefere /api/embeddings (prompt) quando detectado; senão /api/embed (input string).
+      let res;
+      if (embedEndpoint === '/api/embeddings') {
+        res = await callEmbed('/api/embeddings', { model: modelo, prompt: texto }, signal);
+      } else {
+        res = await callEmbed('/api/embed', { model: modelo, input: texto }, signal);
+        if (!res.ok && res.kind === 'endpoint') {
+          embedEndpoint = '/api/embeddings';
+          res = await callEmbed('/api/embeddings', { model: modelo, prompt: texto }, signal);
+        }
+      }
+      if (!res.ok) return { ok: false, error: res.error };
+      const vs = res.vetores || [];
+      if (vs.length !== 1) return { ok: false, error: 'Resposta de embedding em formato inesperado.' };
+      vetores.push(vs[0]);
+    }
+    return { ok: true, vetores };
+  }
+
+  // Se já sabemos que o endpoint é /api/embeddings, ou que o lote não é confiável,
+  // vai direto no item-a-item.
+  if (embedEndpoint === '/api/embeddings' || !embedBatchOk) {
+    return itemAitem();
+  }
+
+  // Tenta /api/embed em modo LOTE.
+  let res = await callEmbed('/api/embed', { model: modelo, input: lista }, signal);
+  if (!res.ok) {
+    if (res.kind === 'endpoint') {
+      // Endpoint inexistente: memoiza e refaz item-a-item via /api/embeddings.
+      embedEndpoint = '/api/embeddings';
+      return itemAitem();
+    }
+    // offline / modelo / http / formato: propaga.
+    return { ok: false, error: res.error };
+  }
+  embedEndpoint = '/api/embed';
+
+  // Confere a contagem: lote que devolve menos vetores que entradas -> degrada
+  // para item-a-item e memoiza a escolha para os próximos lotes.
+  if ((res.vetores || []).length !== lista.length) {
+    console.warn('[ai.embed] lote devolveu', (res.vetores || []).length, 'vetores para', lista.length, 'entradas; degradando para item-a-item');
+    embedBatchOk = false;
+    const degradado = await itemAitem();
+    if (degradado.ok && degradado.vetores.length !== lista.length) {
+      return { ok: false, error: 'Resposta de embedding em formato inesperado.' };
+    }
+    return degradado;
+  }
+
+  return { ok: true, vetores: res.vetores };
+}
+
+// Reset da memoização (uso em testes).
+function _resetEmbedState() {
+  embedEndpoint = null;
+  embedBatchOk = true;
+}
+
 module.exports = {
   checkStatus,
   generate,
@@ -553,5 +701,8 @@ module.exports = {
   generateSummaryFolder,
   generateMindmapFolder,
   generateExercisesFolder,
+  embed,
   DEFAULT_MODEL,
+  DEFAULT_EMBED_MODEL,
+  _resetEmbedState,
 };

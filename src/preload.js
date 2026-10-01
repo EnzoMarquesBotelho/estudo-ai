@@ -49,6 +49,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('grouping:progress', (_e, data) => cb(data));
   },
 
+  // RAG — Perguntar sobre o acervo
+  ragStatus: (args) => ipcRenderer.invoke('rag:status', args),
+  ragIndex: (args) => ipcRenderer.invoke('rag:index', args),
+  ragAsk: (args) => ipcRenderer.invoke('rag:ask', args),
+  ragOpenSource: (args) => ipcRenderer.invoke('rag:openSource', args),
+  onRagProgress: (cb) => {
+    ipcRenderer.removeAllListeners('rag:progress');
+    ipcRenderer.on('rag:progress', (_e, data) => cb(data));
+  },
+
   // Exportar
   exportSave: (title, kind, payload) =>
     ipcRenderer.invoke('export:save', { title, kind, payload }),
