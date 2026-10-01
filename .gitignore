@@ -8,6 +8,8 @@ tests/screenshots/
 tests/bugs.json
 tests/relatorio-testes.md
 tests/relatorio-frontend.md
+tests/relatorio-beta.md
+tests/beta-bugs.json
 
 # Biblioteca de terceiros copiada no build (regenerada por copy-vendor)
 src/renderer/vendor/

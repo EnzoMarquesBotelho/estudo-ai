@@ -192,6 +192,38 @@ vazias/rasas, e salva tudo em **`tests/relatorio-testes.md`**.
   para acompanhar em tempo real ou para uma ferramenta/pessoa reagir aos bugs.
 - Requer o Ollama rodando com pelo menos um modelo instalado.
 
+## 🧪 Agente de beta testing (bugs funcionais)
+
+Um agente que **exercita de verdade** a lógica do app (sem precisar do Ollama nem
+abrir a janela) e procura bugs funcionais. Ele simula as respostas da IA com um
+"stub" de `fetch`, então roda rápido e offline.
+
+```bash
+npm run test:beta
+```
+
+O que ele verifica:
+- **Leitura de arquivos** (`library`): varredura da pasta, leitura de texto,
+  arquivo inexistente, remoção de tags HTML.
+- **Exportação** (`exporter`): markdown/HTML dos três tipos, sanitização do nome
+  do arquivo, escape de HTML (sem injeção), payload vazio.
+- **Persistência** (`store`): config e cache gravam/leem corretamente.
+- **IA** (`ai`): o **idioma** e o **foco** escolhidos entram mesmo no prompt;
+  o mapa mental normaliza/valida o JSON; os exercícios respeitam quantidade/idioma.
+- **Atualização** (`updater`): detecção de repositório git e formato do retorno.
+- **Integração interface↔serviços**: todo `#id` usado no `renderer.js` existe no
+  HTML, toda `window.api.*` existe no `preload.js`, todo canal do `preload` tem
+  `ipcMain.handle` no `main.js`, e as opções de foco do HTML existem no `ai.js`.
+
+Ele grava dois arquivos (ignorados pelo git):
+- **`tests/relatorio-beta.md`** — relatório legível, com severidade (🔴 alta /
+  🟡 média / 🔵 baixa) e sugestão de correção para cada bug.
+- **`tests/beta-bugs.json`** — os mesmos dados em formato legível por máquina,
+  para o desenvolvedor (ou outro agente) corrigir os bugs encontrados.
+
+Se houver bug de **severidade alta**, o processo sai com código ≠ 0 (útil para um
+hook ou CI barrar a entrega).
+
 ## 🎨 Agente de frontend (bugs visuais e melhorias)
 
 Analisa a interface (`src/renderer`) e gera um relatório de melhorias visuais em

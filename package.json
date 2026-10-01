@@ -16,7 +16,8 @@
     "build:portable": "npm run copy:vendor && electron-builder --win portable",
     "test:models": "node tests/testar-modelos.js",
     "test:frontend": "node tests/analise-frontend.js",
-    "test:visual": "node tests/validacao-visual.js"
+    "test:visual": "node tests/validacao-visual.js",
+    "test:beta": "node tests/beta-tester.js"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
