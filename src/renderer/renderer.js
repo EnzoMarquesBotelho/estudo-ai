@@ -152,7 +152,7 @@ function renderNotebooks() {
     ).join('');
     el.innerHTML = `
       <div class="notebook-header">
-        <span>📓 ${nb.name}</span>
+        <span title="${escapeHtml(nb.name)}">📓 ${escapeHtml(nb.name)}</span>
         <span class="count">${nb.files.length}</span>
       </div>
       <div class="notebook-files">${files}</div>`;
@@ -326,7 +326,7 @@ function renderDisciplinas() {
 
     el.innerHTML = `
       <div class="notebook-header" data-disc="${disc.id}">
-        <span>📚 ${escapeHtml(disc.nome)}</span>
+        <span title="${escapeHtml(disc.nome)}">📚 ${escapeHtml(disc.nome)}</span>
         <span class="count">${(disc.arquivos || []).length}</span>
       </div>
       <div class="disc-actions">

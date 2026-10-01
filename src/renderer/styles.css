@@ -58,8 +58,15 @@ body {
 .notebook-header {
   padding: 8px 10px; background: var(--surface); cursor: pointer;
   display: flex; justify-content: space-between; align-items: center;
-  font-weight: 600; font-size: 13px;
+  gap: 8px; font-weight: 600; font-size: 13px;
 }
+/* Nome da disciplina/notebook: ocupa o espaço disponível e trunca com reticências. */
+.notebook-header > span:first-child {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Contagem: largura fixa, nunca encolhe nem some. */
+.notebook-header .count { flex: 0 0 auto; }
 .notebook-files { display: none; flex-direction: column; }
 .notebook.open .notebook-files { display: flex; }
 
