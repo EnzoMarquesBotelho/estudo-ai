@@ -1,4 +1,7 @@
-# 📚 Estudo AI
+# 📚 CábulIA
+
+> O nerd que faz a sua cola. App de estudos com IA 100% local.
+
 
 App de desktop que gera **resumos**, **mapas mentais** e **listas de exercícios** a partir de uma pasta de estudos, usando **IA local** (Ollama). Tudo roda na sua máquina — nenhuma informação vai para a nuvem.
 
@@ -237,7 +240,7 @@ app é 100% local e de código aberto. Como liberar:
   vá em **Ajustes do Sistema → Privacidade e Segurança** e clique em **"Abrir
   mesmo assim"**. Ou clique com o botão direito no app → **Abrir**.
 - **Linux (AppImage):** dê permissão de execução:
-  `chmod +x "Estudo AI-1.0.0.AppImage"` e então execute-o.
+  `chmod +x "CábulIA-1.0.0.AppImage"` e então execute-o.
 
 > Por que não assinamos: certificados de assinatura de código são pagos
 > (anuais) e voltados para distribuição comercial. Para uso doméstico não
@@ -354,7 +357,7 @@ Para passar o app a poucas pessoas próximas, a **versão portátil** é a mais 
 um único `.exe` que não precisa instalar.
 
 1. Gere o portátil com **`windows/GERAR PORTATIL.bat`** (ou `npm run build:portable`).
-   O arquivo `Estudo AI <versão>.exe` fica na pasta `dist/`.
+   O arquivo `CábulIA <versão>.exe` fica na pasta `dist/`.
 2. Envie esse `.exe` para a pessoa (pen drive, nuvem, etc.).
 3. Na primeira execução, o Windows pode avisar que o app não é assinado — veja
    **"Aviso de segurança na primeira execução"** acima para liberar (incluindo o

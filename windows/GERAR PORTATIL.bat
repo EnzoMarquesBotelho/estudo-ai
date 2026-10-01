@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title Estudo AI - Gerar versao portatil
+title CabulIA - Gerar versao portatil
 cd /d "%~dp0.."
 
 echo ============================================
-echo    ESTUDO AI - Gerando SO a versao PORTATIL
+echo    CABULIA - Gerando SO a versao PORTATIL
 echo ============================================
 echo.
 echo A versao portatil e um unico .exe que NAO precisa ser instalado.
@@ -34,7 +34,7 @@ if %errorlevel% neq 0 (
 echo.
 echo ============================================
 echo   Pronto! O portatil esta na pasta "dist":
-echo   "Estudo AI ...portable.exe"
+echo   "CabulIA ...portable.exe"
 echo ============================================
 echo.
 explorer "%~dp0..\dist"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Estudo AI - Atualizador local (macOS / Linux)
+# CabulIA - Atualizador local (macOS / Linux)
 # Verifica o GitHub e, se houver atualizacao, aplica com git pull + npm install.
 set -e
 cd "$(dirname "$0")/.."
 
 echo "============================================"
-echo "       ESTUDO AI - Verificando atualizacoes"
+echo "       CABULIA - Verificando atualizacoes"
 echo "============================================"
 echo
 

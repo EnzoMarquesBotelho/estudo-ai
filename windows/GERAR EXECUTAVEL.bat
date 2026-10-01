@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title Estudo AI - Gerar executavel
+title CabulIA - Gerar executavel
 cd /d "%~dp0.."
 
 echo ============================================
-echo    ESTUDO AI - Gerando o executavel (.exe)
+echo    CABULIA - Gerando o executavel (.exe)
 echo ============================================
 echo.
 
@@ -37,8 +37,8 @@ if %errorlevel% neq 0 (
 echo.
 echo ============================================
 echo   Pronto! Os arquivos estao na pasta "dist".
-echo   - Instalador:  "Estudo AI Setup ...exe"
-echo   - Portatil:    "Estudo AI ...portable.exe"
+echo   - Instalador:  "CabulIA Setup ...exe"
+echo   - Portatil:    "CabulIA ...portable.exe"
 echo.
 echo   Para passar a amigos: o PORTATIL e o mais simples
 echo   ^(um arquivo so, nao precisa instalar^).

@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Estudo AI
+title CabulIA
 cd /d "%~dp0.."
 
 REM Verifica se as dependencias ja foram instaladas.
@@ -27,5 +27,5 @@ if %errorlevel% equ 0 (
     echo.
 )
 
-echo Abrindo o Estudo AI...
+echo Abrindo o CabulIA...
 call npm start

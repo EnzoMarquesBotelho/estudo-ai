@@ -56,7 +56,7 @@ function toHtml(kind, payload) {
   const body = escapeHtml(toMarkdown(kind, payload)).replace(/\n/g, '<br>');
   return `<!doctype html>
 <html lang="pt-br"><head><meta charset="utf-8">
-<title>Estudo AI</title>
+<title>CábulIA</title>
 <style>
   body{font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:820px;margin:40px auto;padding:0 20px;line-height:1.6;color:#222;background:#fafafa}
 </style></head>

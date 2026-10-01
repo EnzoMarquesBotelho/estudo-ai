@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title Estudo AI - Instalacao
+title CabulIA - Instalacao
 cd /d "%~dp0.."
 
 echo ============================================
-echo        ESTUDO AI - Preparando o ambiente
+echo        CABULIA - Preparando o ambiente
 echo ============================================
 echo.
 

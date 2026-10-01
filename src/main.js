@@ -22,7 +22,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#1e1e2e',
-    title: 'Estudo AI',
+    title: 'CábulIA',
     icon: path.join(__dirname, 'renderer', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

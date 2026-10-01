@@ -8,6 +8,7 @@
   "scripts": {
     "start": "electron .",
     "copy:vendor": "node scripts/copy-vendor.js",
+    "icons": "node scripts/gerar-icones.js",
     "postinstall": "node scripts/copy-vendor.js",
     "build": "npm run copy:vendor && electron-builder",
     "build:win": "npm run copy:vendor && electron-builder --win",
@@ -28,11 +29,13 @@
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^26.0.0",
-    "playwright": "^1.48.0"
+    "playwright": "^1.48.0",
+    "png2icons": "^2.0.1",
+    "sharp": "^0.35.5"
   },
   "build": {
     "appId": "com.domestico.estudoai",
-    "productName": "Estudo AI",
+    "productName": "CábulIA",
     "copyright": "Uso doméstico e educacional. App 100% local.",
     "files": [
       "src/**/*",
@@ -44,6 +47,7 @@
       "!dist/**/*"
     ],
     "win": {
+      "icon": "src/renderer/assets/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -60,6 +64,7 @@
       ]
     },
     "mac": {
+      "icon": "src/renderer/assets/icon.icns",
       "category": "public.app-category.education",
       "target": [
         {
@@ -79,6 +84,7 @@
       ]
     },
     "linux": {
+      "icon": "src/renderer/assets/icon.png",
       "category": "Education",
       "target": [
         {

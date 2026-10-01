@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Abre o Estudo AI em macOS e Linux.
+# Abre o CabulIA em macOS e Linux.
 # Uso: bash ABRIR.sh
 set -e
 cd "$(dirname "$0")/.."
@@ -22,5 +22,5 @@ else
   echo "        ate voce instalar o Ollama (https://ollama.com/download)."
 fi
 
-echo "Abrindo o Estudo AI..."
+echo "Abrindo o CabulIA..."
 npm start

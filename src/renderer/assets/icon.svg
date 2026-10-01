@@ -1,0 +1,105 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- mesa de madeira branca clara, vista de cima -->
+    <linearGradient id="desk" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3efe8"/>
+      <stop offset="1" stop-color="#e4ddd0"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="0.35" cy="0.32" r="0.8">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9d9dd"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Fundo = tampo da mesa (flat, de cima) -->
+  <rect x="0" y="0" width="512" height="512" rx="110" fill="url(#desk)"/>
+  <!-- ripas da madeira (linhas horizontais sutis) -->
+  <g stroke="#d7cdba" stroke-width="3" opacity="0.7">
+    <line x1="0" y1="128" x2="512" y2="128"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="384" x2="512" y2="384"/>
+  </g>
+
+  <!-- Bolinhas de papel amassado espalhadas (vibe "fiz e joguei fora").
+       Silhueta irregular e angulosa + vincos internos variados, para
+       parecerem papel amassado de verdade (e não cubos/botões). -->
+  <g stroke="#b7b7c0" stroke-width="1.4" stroke-linejoin="round">
+    <!-- bolinha 1 (canto sup. esq.) -->
+    <g>
+      <polygon points="58,94 66,74 84,66 102,72 112,86 108,104 96,118 74,116 62,106" fill="url(#ball)"/>
+      <path d="M78 72 L88 92 L72 100 M88 92 L108 88 M88 92 L96 118 M66,100 L82 96" fill="none" stroke="#c6c6cd" opacity="0.75"/>
+      <polygon points="84,66 102,72 92,86 80,80" fill="#ffffff" opacity="0.6" stroke="none"/>
+    </g>
+    <!-- bolinha 2 (canto sup. dir.) -->
+    <g>
+      <polygon points="410,98 416,80 434,74 452,80 460,96 456,114 442,124 424,120 412,110" fill="url(#ball)"/>
+      <path d="M430 78 L440 98 L424 106 M440 98 L458 96 M440 98 L442 124 M418 104 L434 100" fill="none" stroke="#c6c6cd" opacity="0.75"/>
+      <polygon points="434,74 452,80 442,94 430,88" fill="#ffffff" opacity="0.6" stroke="none"/>
+    </g>
+    <!-- bolinha 3 (canto inf. dir.) -->
+    <g>
+      <polygon points="422,402 430,382 450,376 468,384 476,400 470,420 456,432 436,428 424,416" fill="url(#ball)"/>
+      <path d="M444 380 L454 402 L438 410 M454 402 L474 400 M454 402 L456 432 M430 408 L448 404" fill="none" stroke="#c6c6cd" opacity="0.75"/>
+      <polygon points="450,376 468,384 456,398 444,392" fill="#ffffff" opacity="0.6" stroke="none"/>
+    </g>
+    <!-- bolinha 4 (canto inf. esq.) -->
+    <g>
+      <polygon points="54,418 60,398 80,392 98,400 104,418 98,436 82,446 64,440 52,430" fill="url(#ball)"/>
+      <path d="M74 396 L84 418 L68 426 M84 418 L102 416 M84 418 L82 446 M60 424 L78 420" fill="none" stroke="#c6c6cd" opacity="0.75"/>
+      <polygon points="80,392 98,400 86,414 74,408" fill="#ffffff" opacity="0.6" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- Óculos nerd de aro preto, no canto (ícone do nerd), visto de cima -->
+  <g transform="rotate(-10 388 300)" fill="none" stroke="#1a1a1a" stroke-width="9">
+    <circle cx="360" cy="300" r="30"/>
+    <circle cx="424" cy="300" r="30"/>
+    <path d="M390 300 q17 -14 34 0"/>
+    <path d="M330 294 l-20 -8"/>
+    <path d="M454 294 l20 -8"/>
+  </g>
+
+  <!-- Lápis amarelo encostado no papel -->
+  <g transform="rotate(28 250 360)">
+    <rect x="150" y="350" width="210" height="20" rx="4" fill="#f2b705"/>
+    <rect x="150" y="350" width="210" height="7" rx="3" fill="#ffffff" opacity="0.35"/>
+    <!-- ponta -->
+    <polygon points="360,350 388,360 360,370" fill="#e8c79a"/>
+    <polygon points="376,356 388,360 376,364" fill="#2b2b2b"/>
+    <!-- borracha -->
+    <rect x="138" y="350" width="14" height="20" rx="4" fill="#e86a6a"/>
+  </g>
+
+  <!-- A COLA: papel plano em forma de "C" (vista de cima), levemente torto -->
+  <g transform="rotate(-6 230 262)">
+    <!-- sombra chapada do papel -->
+    <path d="M232 150
+             a118 118 0 1 0 0 236
+             a118 118 0 0 0 104 -62
+             l-62 -32
+             a55 55 0 1 1 0 -50
+             l62 -32
+             a118 118 0 0 0 -104 -62 Z"
+          fill="#000000" opacity="0.10" transform="translate(6 8)"/>
+    <!-- papel branco -->
+    <path d="M232 150
+             a118 118 0 1 0 0 236
+             a118 118 0 0 0 104 -62
+             l-62 -32
+             a55 55 0 1 1 0 -50
+             l62 -32
+             a118 118 0 0 0 -104 -62 Z"
+          fill="#ffffff" stroke="#e3e3e8" stroke-width="2"/>
+    <!-- cantinho dobrado -->
+    <path d="M150 182 l30 -6 l-24 28 Z" fill="#ececf0"/>
+    <!-- linhas de caderno (anotações da cola) -->
+    <g stroke="#9aa6c8" stroke-width="5" stroke-linecap="round" opacity="0.9">
+      <line x1="178" y1="206" x2="286" y2="206"/>
+      <line x1="168" y1="238" x2="276" y2="238"/>
+      <line x1="166" y1="270" x2="262" y2="270"/>
+      <line x1="172" y1="302" x2="248" y2="302"/>
+    </g>
+    <!-- rabiscos a caneta, cara de cola -->
+    <text x="186" y="186" font-family="monospace" font-size="24" fill="#c0392b" font-weight="bold">H₂O</text>
+  </g>
+</svg>

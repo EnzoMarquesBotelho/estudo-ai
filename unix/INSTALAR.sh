@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Instalação do Estudo AI para macOS e Linux.
+# Instalação do CabulIA para macOS e Linux.
 # Uso: abra um terminal nesta pasta e rode:  bash INSTALAR.sh
 set -e
 cd "$(dirname "$0")/.."
 
 echo "============================================"
-echo "       ESTUDO AI - Preparando o ambiente"
+echo "       CABULIA - Preparando o ambiente"
 echo "============================================"
 echo
 

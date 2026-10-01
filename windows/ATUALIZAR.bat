@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title Estudo AI - Atualizar
+title CabulIA - Atualizar
 cd /d "%~dp0.."
 
 echo ============================================
-echo        ESTUDO AI - Verificando atualizacoes
+echo        CABULIA - Verificando atualizacoes
 echo ============================================
 echo.
 
