@@ -492,6 +492,139 @@ console.log('\n== indexFiles / ask / persistência / genChunkId ==');
   delete global.fetch;
   ai._resetEmbedState();
 
+  // =========================================================================
+  // indexFilesStreaming (orquestração streaming / diff / cancelamento)
+  // =========================================================================
+  console.log('\n== indexFilesStreaming ==');
+
+  // embed mock reaproveitável para o streaming (determinístico, aceita { signal }).
+  const embedStream = async (textos) => ({ ok: true, vetores: textos.map((t) => vetorSeed((t || ' ').charCodeAt(0))) });
+
+  // --- (a) streaming indexa N arquivos lendo via readText 1x por arquivo ---
+  const rootS = ROOT + '\\stream-' + Date.now() + '-A';
+  const textosS = {
+    [rootS + '\\a.txt']: 'Alpha conteudo de estudo sobre o tema um.',
+    [rootS + '\\b.txt']: 'Beta conteudo de estudo sobre o tema dois.',
+    [rootS + '\\c.txt']: 'Gamma conteudo de estudo sobre o tema tres.',
+  };
+  const metaS = Object.keys(textosS).map((p, i) => ({ path: p, name: 'f' + i + '.txt', mtime: 100 + i, size: 40 + i }));
+  const scanS = metaS.map((m) => ({ path: m.path, mtime: m.mtime, size: m.size }));
+
+  const readsPorPath = {};
+  const readTextS = async (p) => { readsPorPath[p] = (readsPorPath[p] || 0) + 1; return { ok: true, text: textosS[p], name: 'x' }; };
+  const progressoS = [];
+  const rs1 = await rag.indexFilesStreaming({
+    rootFolder: rootS, filesMeta: metaS, scannedPaths: scanS,
+    readText: readTextS, embed: embedStream, embedModel: 'nomic-embed-text',
+    onProgress: (p) => progressoS.push(p),
+  });
+  ok(rs1.ok, 'streaming indexa (ok)');
+  eq(rs1.reindexados, 3, 'streaming processa os 3 arquivos');
+  eq(rs1.pendentes, 0, 'streaming sem pendentes após indexar');
+  ok(Object.values(readsPorPath).every((n) => n === 1), 'streaming lê cada arquivo exatamente 1x (sob demanda)');
+  eq(Object.keys(readsPorPath).length, 3, 'streaming lê os 3 arquivos a (re)indexar');
+  const stS = rag.indexStatus(rootS);
+  ok(stS.exists && stS.arquivos === 3, 'streaming indexStatus reflete 3 arquivos');
+
+  // --- (b) onProgress phase:'index' com current crescente de 1..N desde o 1º ---
+  eq(progressoS.length, 3, 'streaming emite progresso para cada arquivo');
+  ok(progressoS.every((p) => p.phase === 'index'), 'streaming progresso tem phase:index');
+  ok(progressoS.every((p) => p.total === 3), 'streaming progresso tem total=N');
+  ok(progressoS[0].current === 1 && progressoS[1].current === 2 && progressoS[2].current === 3, 'streaming current 1..N desde o 1º arquivo');
+  ok(progressoS.every((p) => typeof p.name === 'string' && p.name.length), 'streaming progresso inclui o nome do arquivo');
+
+  // --- (g) paridade com indexFiles: mesmo índice final p/ a mesma entrada ---
+  const rootPar = ROOT + '\\par-' + Date.now();
+  const filesPar = metaS.map((m) => ({ path: m.path.replace(rootS, rootPar), name: m.name, text: textosS[m.path], mtime: m.mtime, size: m.size }));
+  const scanPar = filesPar.map((f) => ({ path: f.path, mtime: f.mtime, size: f.size }));
+  await rag.indexFiles({ rootFolder: rootPar, files: filesPar, scannedPaths: scanPar, embed: embedStream, embedModel: 'nomic-embed-text' });
+  const metaStream = rag.loadMeta(rootS);
+  const metaBatch = rag.loadMeta(rootPar);
+  eq(metaStream.chunks, metaBatch.chunks, 'paridade streaming x indexFiles: mesmo nº de chunks');
+  eq(metaStream.arquivos, metaBatch.arquivos, 'paridade: mesmo nº de arquivos');
+  eq(metaStream.dim, metaBatch.dim, 'paridade: mesma dimensão');
+
+  // --- diff incremental via streaming: reindex sem mudança -> 0 ---
+  const rs2 = await rag.indexFilesStreaming({
+    rootFolder: rootS, filesMeta: metaS, scannedPaths: scanS,
+    readText: async (p) => ({ ok: true, text: textosS[p] }), embed: embedStream, embedModel: 'nomic-embed-text',
+  });
+  eq(rs2.reindexados, 0, 'streaming reindex sem mudança -> 0 reindexados');
+
+  // --- (c) readText que falha (throw ou ok:false) -> arquivo pendente, não derruba ---
+  const rootErr = ROOT + '\\stream-err-' + Date.now();
+  const metaErr = [
+    { path: rootErr + '\\ok1.txt', name: 'ok1', mtime: 1, size: 10 },
+    { path: rootErr + '\\throw.txt', name: 'throw', mtime: 2, size: 10 },
+    { path: rootErr + '\\nook.txt', name: 'nook', mtime: 3, size: 10 },
+    { path: rootErr + '\\ok2.txt', name: 'ok2', mtime: 4, size: 10 },
+  ];
+  const scanErr = metaErr.map((m) => ({ path: m.path, mtime: m.mtime, size: m.size }));
+  const readTextErr = async (p) => {
+    if (p.endsWith('throw.txt')) throw new Error('leitura explodiu');
+    if (p.endsWith('nook.txt')) return { ok: false };
+    return { ok: true, text: 'conteudo legivel do arquivo de estudo aqui.' };
+  };
+  const rsErr = await rag.indexFilesStreaming({
+    rootFolder: rootErr, filesMeta: metaErr, scannedPaths: scanErr,
+    readText: readTextErr, embed: embedStream, embedModel: 'nomic-embed-text',
+  });
+  ok(rsErr.ok, 'streaming com readText falho -> ok (não derruba o pipeline)');
+  eq(rsErr.reindexados, 2, 'streaming indexa só os 2 legíveis');
+  ok(rsErr.pendentes >= 2, 'streaming deixa os ilegíveis pendentes');
+
+  // --- (d)/(e) cancelamento: signal.aborted no meio -> para, salva parcial, cancelado:true ---
+  const rootCancel = ROOT + '\\stream-cancel-' + Date.now();
+  const metaCancel = Array.from({ length: 6 }, (_, i) => ({ path: rootCancel + '\\f' + i + '.txt', name: 'f' + i, mtime: i + 1, size: 20 }));
+  const scanCancel = metaCancel.map((m) => ({ path: m.path, mtime: m.mtime, size: m.size }));
+  const abortCtl = new AbortController();
+  let lidosAteCancelar = 0;
+  const readTextCancel = async (p) => {
+    lidosAteCancelar += 1;
+    if (lidosAteCancelar >= 3) abortCtl.abort(); // aborta após o 3º arquivo começar
+    return { ok: true, text: 'conteudo do arquivo numero sobre estudo e provas.' };
+  };
+  const rsCancel = await rag.indexFilesStreaming({
+    rootFolder: rootCancel, filesMeta: metaCancel, scannedPaths: scanCancel,
+    readText: readTextCancel, embed: embedStream, embedModel: 'nomic-embed-text',
+    signal: abortCtl.signal, checkpointEvery: 2,
+  });
+  ok(rsCancel.ok, 'streaming cancelado -> ok (índice salvo)');
+  eq(rsCancel.cancelado, true, 'streaming cancelado -> cancelado:true');
+  ok(rsCancel.reindexados < 6, 'streaming cancelado -> processou menos que o total');
+  ok(rsCancel.reindexados >= 1, 'streaming cancelado -> processou ao menos 1 (parcial)');
+  ok(rsCancel.pendentes >= 1, 'streaming cancelado -> restam pendentes');
+  const stCancel = rag.indexStatus(rootCancel);
+  ok(stCancel.exists, 'streaming cancelado -> índice parcial salvo (consistente)');
+
+  // --- (e) checkpoint: índice recuperável; reindex incremental completa o resto ---
+  const rsResume = await rag.indexFilesStreaming({
+    rootFolder: rootCancel, filesMeta: metaCancel, scannedPaths: scanCancel,
+    readText: async () => ({ ok: true, text: 'conteudo do arquivo numero sobre estudo e provas.' }),
+    embed: embedStream, embedModel: 'nomic-embed-text',
+  });
+  ok(rsResume.ok, 'streaming retomada após cancelamento -> ok');
+  ok(rsResume.reindexados >= 1, 'streaming retomada processa só o que faltava');
+  eq(rsResume.pendentes, 0, 'streaming retomada completa o índice (0 pendentes)');
+  eq(rag.indexStatus(rootCancel).arquivos, 6, 'streaming retomada -> todos os 6 arquivos indexados');
+
+  // --- (f) offline no 1º lote do 1º arquivo -> fatal, nada salvo ---
+  const rootOffS = ROOT + '\\stream-off-' + Date.now();
+  const embedOfflineS = async () => ({ ok: false, error: 'Ollama não está rodando. Abra o Ollama e tente de novo.' });
+  const rsOff = await rag.indexFilesStreaming({
+    rootFolder: rootOffS,
+    filesMeta: [{ path: rootOffS + '\\z.txt', name: 'z', mtime: 1, size: 10 }],
+    scannedPaths: [{ path: rootOffS + '\\z.txt', mtime: 1, size: 10 }],
+    readText: async () => ({ ok: true, text: 'texto qualquer para indexar no streaming' }),
+    embed: embedOfflineS, embedModel: 'nomic-embed-text',
+  });
+  eq(rsOff.ok, false, 'streaming offline no 1º lote -> ok:false');
+  ok(rsOff.error && rsOff.error.startsWith('Ollama não está rodando'), 'streaming offline propaga prefixo literal');
+  eq(rag.indexStatus(rootOffS).exists, false, 'streaming offline no 1º lote -> nada salvo');
+
+  // limpeza dos índices de streaming criados nesta seção.
+  for (const r of [rootS, rootPar, rootErr, rootCancel, rootOffS]) rag.clearIndex(r);
+
   finalizar();
 })().catch((e) => {
   console.error('Erro fatal no teste:', e);

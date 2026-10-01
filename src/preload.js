@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('api', {
   // RAG — Perguntar sobre o acervo
   ragStatus: (args) => ipcRenderer.invoke('rag:status', args),
   ragIndex: (args) => ipcRenderer.invoke('rag:index', args),
+  ragCancelIndex: () => ipcRenderer.invoke('rag:cancelIndex'),
   ragAsk: (args) => ipcRenderer.invoke('rag:ask', args),
   ragOpenSource: (args) => ipcRenderer.invoke('rag:openSource', args),
   onRagProgress: (cb) => {

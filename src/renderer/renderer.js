@@ -936,25 +936,36 @@ function scannedPathsAtuais() {
   return state.notebooks.flatMap((n) => n.files).map((f) => ({ path: f.path, mtime: f.mtime, size: f.size }));
 }
 
-// Monta a lista de arquivos para indexar. INCLUI o arquivo mesmo quando a
-// leitura falha (text:''), em vez de descartá-lo — não reusa o filtro de
-// gatherFiles. Retorna { ok, files, scannedPaths } ou { ok:false, error }.
-async function gatherFilesForIndex() {
+// Acima deste nº de arquivos, mostra o aviso de pasta grande antes de indexar.
+const LIMIAR_PASTA_GRANDE = 200;
+
+// Monta só os METADADOS leves dos arquivos a indexar (SEM texto). A extração de
+// texto migrou para o main, que lê um arquivo por vez (streaming de baixa
+// memória) — por isso aqui não há mais leitura de conteúdo.
+// Retorna { ok, filesMeta:[{path,mtime,size,name}], scannedPaths } ou { ok:false, error }.
+function gatherFilesMetaForIndex() {
   const allFiles = state.notebooks.flatMap((n) => n.files);
   if (!allFiles.length) return { ok: false, error: 'A pasta não tem arquivos.' };
   const scannedPaths = scannedPathsAtuais();
-  const files = [];
-  for (const f of allFiles) {
-    const r = await window.api.readFile(f.path);
-    files.push({
-      name: (r && r.name) || basenameFromPath(f.path),
-      text: r && r.ok && r.text ? r.text : '',
-      path: f.path,
-      mtime: f.mtime,
-      size: f.size,
-    });
-  }
-  return { ok: true, files, scannedPaths };
+  const filesMeta = allFiles.map((f) => ({
+    path: f.path,
+    mtime: f.mtime,
+    size: f.size,
+    name: basenameFromPath(f.path),
+  }));
+  return { ok: true, filesMeta, scannedPaths };
+}
+
+// Aviso PT-BR para pasta grande: tranquiliza (roda localmente, dá pra cancelar,
+// reindexar depois é incremental e rápido) e pede confirmação. Retorna
+// Promise<boolean>. Usa window.confirm (não há componente de modal no app).
+function confirmLargeFolder(n) {
+  const texto =
+    `Esta pasta tem ${n} arquivos. Indexar tudo pode levar alguns minutos e usar ` +
+    `bastante CPU e memória. Fica tudo no seu computador (nada vai para a nuvem) e ` +
+    `você pode cancelar a qualquer momento — o que já foi indexado é salvo, e ` +
+    `reindexar depois é rápido (só processa o que mudou). Deseja continuar?`;
+  return Promise.resolve(window.confirm(texto));
 }
 
 // Popula o seletor de escopo com "Pasta inteira" + disciplinas do mapeamento.
@@ -992,13 +1003,16 @@ async function refreshAskStatus() {
   el.textContent = txt;
 }
 
-// Mostra progresso da indexação (molde de bindGroupingProgress).
+// Mostra progresso da indexação (molde de bindGroupingProgress). Texto
+// "Indexando X de N — nome" desde o 1º arquivo (phase:'index' do streaming).
 function bindRagProgress(container) {
   window.api.onRagProgress((p) => {
-    const pct = p.total ? Math.round(((p.current || 0) / p.total) * 100) : 0;
+    const total = p.total || 0;
+    const current = p.current || 0;
+    const pct = total ? Math.round((current / total) * 100) : 0;
     container.innerHTML =
-      `<div class="placeholder" style="margin-top:0">Indexando material…` +
-      `<br><small>${escapeHtml(p.name || '')} (${p.current || 0}/${p.total || 0})</small>` +
+      `<div class="placeholder" style="margin-top:0">Indexando ${current} de ${total}` +
+      `<br><small>${escapeHtml(p.name || '')}</small>` +
       `<div class="setup-progress-bar" style="margin-top:10px"><div class="setup-progress-fill" style="width:${pct}%"></div></div></div>`;
   });
 }
@@ -1034,27 +1048,40 @@ async function doIndex({ fromScratch = false } = {}) {
   const progress = $('#askProgress');
   const indexBtn = $('#askIndexBtn');
   const reindexBtn = $('#askReindexBtn');
+  const cancelBtn = $('#askCancelBtn');
 
-  const coletado = await gatherFilesForIndex();
+  const coletado = gatherFilesMetaForIndex();
   if (!coletado.ok) return toast(coletado.error, 'error');
+
+  // Aviso de pasta grande antes de começar (tranquilizador, com continuar/cancelar).
+  const n = state.notebooks.flatMap((x) => x.files).length;
+  if (n > LIMIAR_PASTA_GRANDE) {
+    const continuar = await confirmLargeFolder(n);
+    if (!continuar) return;
+  }
 
   indexBtn.disabled = true;
   reindexBtn.disabled = true;
+  if (cancelBtn) cancelBtn.style.display = '';
   progress.className = 'group-progress show';
   progress.innerHTML = '<div class="placeholder" style="margin-top:0">Preparando…</div>';
   bindRagProgress(progress);
 
-  const res = await window.api.ragIndex({
-    folder: state.root,
-    files: coletado.files,
-    scannedPaths: coletado.scannedPaths,
-    fromScratch,
-  });
-
-  indexBtn.disabled = false;
-  reindexBtn.disabled = false;
-  progress.className = 'group-progress';
-  progress.innerHTML = '';
+  let res;
+  try {
+    res = await window.api.ragIndex({
+      folder: state.root,
+      filesMeta: coletado.filesMeta,
+      scannedPaths: coletado.scannedPaths,
+      fromScratch,
+    });
+  } finally {
+    indexBtn.disabled = false;
+    reindexBtn.disabled = false;
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    progress.className = 'group-progress';
+    progress.innerHTML = '';
+  }
 
   if (!res || !res.ok) {
     if (res && res.error === 'EMBED_MODEL_AUSENTE') {
@@ -1063,7 +1090,11 @@ async function doIndex({ fromScratch = false } = {}) {
     }
     return toast((res && res.error) || 'Falha ao indexar.', 'error');
   }
-  toast(`Índice pronto: ${res.reindexados} arquivo(s) processado(s)`, 'success');
+  if (res.cancelado) {
+    toast('Indexação cancelada — o que já foi indexado está salvo.', 'info');
+  } else {
+    toast(`Índice pronto: ${res.reindexados} arquivo(s) processado(s)`, 'success');
+  }
   await refreshAskStatus();
 }
 
@@ -1164,6 +1195,7 @@ function bindEvents() {
   // Perguntar (RAG local).
   $('#askIndexBtn').addEventListener('click', () => doIndex({ fromScratch: false }));
   $('#askReindexBtn').addEventListener('click', () => doIndex({ fromScratch: true }));
+  $('#askCancelBtn').addEventListener('click', () => window.api.ragCancelIndex());
   $('#askBtn').addEventListener('click', doAsk);
   $('#askScope').addEventListener('change', (e) => {
     const v = e.target.value;

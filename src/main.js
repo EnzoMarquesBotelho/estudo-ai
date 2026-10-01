@@ -15,6 +15,9 @@ const setup = require('./services/setup');
 const updater = require('./services/updater');
 
 let mainWindow = null;
+// AbortController da indexação RAG em curso (null quando ociosa). Permite o
+// cancelamento seguro via rag:cancelIndex. Só uma indexação por vez.
+let indexAbort = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -338,7 +341,7 @@ function sendRagProgress(p) {
 
 // Injetores das chamadas ao Ollama para o núcleo rag.js. A temperature:0.2
 // (anti-alucinação) vive SÓ aqui — rag.ask não a conhece.
-const ragEmbed = (textos) => ai.embed(textos, { model: ai.DEFAULT_EMBED_MODEL });
+const ragEmbed = (textos, opts = {}) => ai.embed(textos, { model: ai.DEFAULT_EMBED_MODEL, ...opts });
 const ragGenerate = (prompt, opts = {}) =>
   ai.generate(prompt, { model: store.get('model') || undefined, numPredict: 1200, temperature: 0.2, ...opts });
 
@@ -366,8 +369,38 @@ ipcMain.handle('rag:status', async (_evt, { folder, scannedPaths } = {}) => {
   return Object.assign({}, meta, { embedModelInstalled, pendentes });
 });
 
-// Indexa a pasta. args: { folder, files, scannedPaths, fromScratch }.
-ipcMain.handle('rag:index', async (_evt, { folder, files, scannedPaths, fromScratch } = {}) => {
+// Lê o texto de UM arquivo sob demanda, com timeout sensato (robustez: um PDF
+// que trava não derruba nem congela o pipeline). Falha/timeout -> { ok:false }
+// (o streaming trata como ilegível/pendente). SÓ LEITURA — nunca escreve/move.
+const READ_TIMEOUT_MS = 60000;
+function readFileTextComTimeout(filePath) {
+  return new Promise((resolve) => {
+    let resolvido = false;
+    const timer = setTimeout(() => {
+      if (resolvido) return;
+      resolvido = true;
+      console.warn('[rag:index] timeout de leitura em', filePath);
+      resolve({ ok: false });
+    }, READ_TIMEOUT_MS);
+    library.readFileText(filePath)
+      .then((r) => { if (resolvido) return; resolvido = true; clearTimeout(timer); resolve(r); })
+      .catch((e) => {
+        if (resolvido) return;
+        resolvido = true;
+        clearTimeout(timer);
+        console.warn('[rag:index] leitura falhou em', filePath, e && e.message);
+        resolve({ ok: false });
+      });
+  });
+}
+
+// Indexa a pasta em STREAMING (memória baixa/constante). O main orquestra a
+// leitura sob demanda; o renderer só dispara e mostra o progresso.
+// args: { folder, filesMeta, scannedPaths, fromScratch }.
+//   filesMeta: [{ path, mtime, size, name }] SEM texto (lido aqui sob demanda).
+// Compatibilidade: se vier `files` legado (com texto), deriva filesMeta dele e
+// um readText que devolve o texto já presente (sem reler do disco).
+ipcMain.handle('rag:index', async (_evt, { folder, filesMeta, files, scannedPaths, fromScratch } = {}) => {
   const root = resolveFolder(folder);
   if (!root) return { ok: false, error: 'Pasta inválida.' };
 
@@ -380,27 +413,50 @@ ipcMain.handle('rag:index', async (_evt, { folder, files, scannedPaths, fromScra
     return { ok: false, error: 'EMBED_MODEL_AUSENTE' };
   }
 
-  // Validação de entradas: files aceita text:'' (arquivo ilegível).
-  const validFiles = (files || []).filter((f) => f && typeof f.path === 'string' && typeof f.text === 'string');
+  // Caminho de compatibilidade: payload legado com `files` (texto embutido).
+  const legacyFiles = (files || []).filter((f) => f && typeof f.path === 'string' && typeof f.text === 'string');
+  let validMeta;
+  let readText;
+  if (!filesMeta && legacyFiles.length) {
+    const textoPorPath = Object.fromEntries(legacyFiles.map((f) => [f.path, f.text]));
+    validMeta = legacyFiles.map((f) => ({ path: f.path, mtime: f.mtime, size: f.size, name: f.name }));
+    readText = async (p) => ({ ok: true, text: textoPorPath[p] || '' });
+  } else {
+    validMeta = (filesMeta || []).filter((m) => m && typeof m.path === 'string');
+    readText = readFileTextComTimeout;
+  }
+
   const validScan = (scannedPaths || []).filter((s) => s && typeof s.path === 'string');
-  if (!validFiles.length && !validScan.length) {
+  if (!validMeta.length && !validScan.length) {
     return { ok: false, error: 'A pasta não tem arquivos.' };
   }
 
+  indexAbort = new AbortController();
   try {
-    return await rag.indexFiles({
+    return await rag.indexFilesStreaming({
       rootFolder: root,
-      files: validFiles,
+      filesMeta: validMeta,
       scannedPaths: validScan,
       fromScratch: !!fromScratch,
+      readText,
       embed: ragEmbed,
       embedModel: ai.DEFAULT_EMBED_MODEL,
       onProgress: sendRagProgress,
+      signal: indexAbort.signal,
     });
   } catch (e) {
     console.warn('[rag:index] falhou:', e && e.message);
     return { ok: false, error: (e && e.message) || 'Falha ao indexar.' };
+  } finally {
+    indexAbort = null;
   }
+});
+
+// Cancela a indexação RAG em curso (seguro: o streaming salva o índice parcial
+// no último checkpoint e o incremental completa o resto depois).
+ipcMain.handle('rag:cancelIndex', async () => {
+  if (indexAbort) indexAbort.abort();
+  return { ok: true };
 });
 
 // Responde a uma pergunta. args: { folder, pergunta, scope, discId? }.

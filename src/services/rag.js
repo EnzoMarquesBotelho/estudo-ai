@@ -502,6 +502,86 @@ function montarLotes(trechos, { embedBatch = EMBED_BATCH, maxCharsLote = MAX_PRO
   return lotes;
 }
 
+// Resultado possível de processarArquivo:
+//   { outcome:'fatal', error }      -> abortar tudo, nada salvo (offline no 1º lote)
+//   { outcome:'pendente', indice }  -> arquivo ficou de fora (ilegível/falha); segue
+//   { outcome:'ok', indice }        -> arquivo indexado (chunks gravados no índice)
+// `primeiroDoLote` sinaliza se este é o 1º arquivo efetivamente processado da
+// rodada (usado para a regra "offline no 1º lote do 1º arquivo -> fatal").
+async function processarArquivo(indice, file, embed, signal, { primeiroDoLote = false, origem = 'indexFiles' } = {}) {
+  const pedacos = chunkText(file.text || '');
+  if (!pedacos.length) {
+    // Texto vazio/ilegível -> 0 chunks -> fica pendente.
+    // Chunks antigos já foram removidos no prune anterior (se era alterado).
+    return { outcome: 'pendente', indice };
+  }
+
+  const trechos = pedacos.map((p) => p.trecho);
+  const lotes = montarLotes(trechos);
+
+  let vetores = [];
+  let falhouArquivo = false;
+  let indiceTrecho = 0;
+  for (const lote of lotes) {
+    if (signal && signal.aborted) { falhouArquivo = true; break; }
+    let res;
+    try {
+      res = await embed(lote, { signal });
+    } catch (e) {
+      res = { ok: false, error: (e && e.message) || 'falha de embedding' };
+    }
+    if (!res || res.ok === false) {
+      // Offline no 1º lote do 1º arquivo processado -> fatal (nada salvo).
+      if (res && erroEhOffline(res.error) && primeiroDoLote && indiceTrecho === 0) {
+        console.warn(`[rag] ${origem} offline no 1º lote:`, res.error);
+        return { outcome: 'fatal', error: res.error };
+      }
+      // Falha de embedding de 1 arquivo -> recuperável: pula o arquivo.
+      console.warn(`[rag] ${origem} falha de embedding em`, file.path, res && res.error);
+      falhouArquivo = true;
+      break;
+    }
+    vetores = vetores.concat(res.vetores || []);
+    indiceTrecho += lote.length;
+  }
+
+  if (falhouArquivo || vetores.length !== pedacos.length) {
+    // Não atualiza a signature -> arquivo fica pendente p/ próxima indexação.
+    if (!falhouArquivo) console.warn(`[rag] ${origem} contagem de vetores inesperada em`, file.path);
+    return { outcome: 'pendente', indice };
+  }
+
+  // Registra a dimensão a partir do 1º vetor conhecido.
+  let novoIndice = indice;
+  if (!novoIndice.dim && vetores.length && Array.isArray(vetores[0])) {
+    novoIndice = Object.assign({}, novoIndice, { dim: vetores[0].length });
+  }
+
+  const novosChunks = pedacos.map((p, idx) => ({
+    id: genChunkId(file.path, p.ordem),
+    path: file.path,
+    ordem: p.ordem,
+    trecho: p.trecho,
+    vetor: vetores[idx],
+  }));
+  novoIndice = upsertChunks(novoIndice, file.path, novosChunks);
+  return { outcome: 'ok', indice: novoIndice };
+}
+
+// Reconstrói o conjunto final de arquivos (para refreshSignatures): assinaturas
+// dos inalterados preservadas (de antes da mutação) + os efetivamente processados.
+function conjuntoParaSignatures(sigsOriginais, removidos, aReindexarPaths, processados) {
+  const inalteradosPreservados = [];
+  const removidosSet = new Set(removidos);
+  const reprocessadosSet = new Set(aReindexarPaths);
+  for (const p of Object.keys(sigsOriginais)) {
+    if (removidosSet.has(p)) continue;      // sumiu do disco
+    if (reprocessadosSet.has(p)) continue;  // novo/alterado: tratado em processados
+    inalteradosPreservados.push({ path: p, mtime: parseMtime(sigsOriginais[p]), size: parseSize(sigsOriginais[p]) });
+  }
+  return inalteradosPreservados.concat(processados);
+}
+
 // Gera/atualiza o índice de forma incremental.
 //   files: [{ name, text, path, mtime, size }] (text:'' = ilegível)
 //   scannedPaths: [{ path, mtime, size }] (todos no disco; só p/ removidos)
@@ -535,77 +615,17 @@ async function indexFiles({ rootFolder, files = [], scannedPaths = [], fromScrat
       onProgress({ phase: 'embed', current: i + 1, total, name: file.name || nomeArquivo(file.path) });
     }
 
-    const pedacos = chunkText(file.text || '');
-    if (!pedacos.length) {
-      // Texto vazio/ilegível -> 0 chunks -> fica pendente (fora de processados).
-      // Chunks antigos já foram removidos no prune acima (se era alterado).
-      continue;
-    }
-
-    const trechos = pedacos.map((p) => p.trecho);
-    const lotes = montarLotes(trechos);
-
-    let vetores = [];
-    let falhouArquivo = false;
-    let indiceTrecho = 0;
-    for (const lote of lotes) {
-      let res;
-      try {
-        res = await embed(lote);
-      } catch (e) {
-        res = { ok: false, error: (e && e.message) || 'falha de embedding' };
-      }
-      if (!res || res.ok === false) {
-        // Offline no 1º lote do 1º arquivo processado -> fatal (nada salvo).
-        if (res && erroEhOffline(res.error) && !processados.length && indiceTrecho === 0) {
-          console.warn('[rag] indexFiles offline no 1º lote:', res.error);
-          return { ok: false, error: res.error };
-        }
-        // Falha de embedding de 1 arquivo -> recuperável: pula o arquivo.
-        console.warn('[rag] indexFiles falha de embedding em', file.path, res && res.error);
-        falhouArquivo = true;
-        break;
-      }
-      vetores = vetores.concat(res.vetores || []);
-      indiceTrecho += lote.length;
-    }
-
-    if (falhouArquivo || vetores.length !== pedacos.length) {
-      // Não atualiza a signature -> arquivo fica pendente p/ próxima indexação.
-      if (!falhouArquivo) console.warn('[rag] indexFiles contagem de vetores inesperada em', file.path);
-      continue;
-    }
-
-    // Registra a dimensão a partir do 1º vetor conhecido.
-    if (!indice.dim && vetores.length && Array.isArray(vetores[0])) {
-      indice = Object.assign({}, indice, { dim: vetores[0].length });
-    }
-
-    const novosChunks = pedacos.map((p, idx) => ({
-      id: genChunkId(file.path, p.ordem),
-      path: file.path,
-      ordem: p.ordem,
-      trecho: p.trecho,
-      vetor: vetores[idx],
-    }));
-    indice = upsertChunks(indice, file.path, novosChunks);
-    processados.push(file);
+    const r = await processarArquivo(indice, file, embed, signal, { primeiroDoLote: !processados.length });
+    if (r.outcome === 'fatal') return { ok: false, error: r.error };
+    indice = r.indice;
+    if (r.outcome === 'ok') processados.push(file);
   }
 
   // Preserva as assinaturas dos arquivos inalterados (as de antes da mutação) e
   // adiciona as dos arquivos efetivamente processados. refreshSignatures grava
   // SEMPRE via fileSig, então reconstruímos {path, mtime, size} a partir da
   // assinatura antiga "mtime::size".
-  const inalteradosPreservados = [];
-  const removidosSet = new Set(removidos);
-  const reprocessadosSet = new Set(aReindexar.map((f) => f.path));
-  for (const p of Object.keys(sigsOriginais)) {
-    if (removidosSet.has(p)) continue;      // sumiu do disco
-    if (reprocessadosSet.has(p)) continue;  // novo/alterado: tratado em processados
-    inalteradosPreservados.push({ path: p, mtime: parseMtime(sigsOriginais[p]), size: parseSize(sigsOriginais[p]) });
-  }
-
-  const conjuntoFinal = inalteradosPreservados.concat(processados);
+  const conjuntoFinal = conjuntoParaSignatures(sigsOriginais, removidos, aReindexar.map((f) => f.path), processados);
   indice = refreshSignatures(indice, conjuntoFinal);
 
   const salvou = saveIndex(indice);
@@ -627,6 +647,114 @@ function parseMtime(sig) {
 function parseSize(sig) {
   const partes = String(sig || '').split('::');
   return Number(partes[1]) || 0;
+}
+
+// Gera/atualiza o índice em STREAMING, com memória baixa/constante: o texto de
+// UM arquivo entra sob demanda (via `readText`), é chunk+embed+upsert e sai de
+// escopo antes do próximo. O pico de memória NÃO cresce com o total da pasta —
+// no máximo o texto de um arquivo (mais seus chunks) fica vivo por vez.
+//
+//   rootFolder     : raiz do acervo (chave do índice)
+//   filesMeta      : [{ path, mtime, size, name }] (SEM texto) — novos/alterados
+//   scannedPaths   : [{ path, mtime, size }] (todos no disco; só p/ removidos)
+//   fromScratch    : recria do zero
+//   readText       : async (path) -> { ok, text, name } lido SOB DEMANDA pelo main
+//                    (falha/throw -> arquivo tratado como ilegível/pendente)
+//   embed          : injetado (ai.embed), aceita (lote, { signal })
+//   embedModel     : tag do modelo de embedding
+//   onProgress     : callback de progresso ({ phase:'index', current, total, name })
+//   signal         : AbortSignal para cancelamento seguro
+//   checkpointEvery: salva o índice a cada N arquivos processados (parcial recuperável)
+//
+// Retorna { ok, status, reindexados, removidos, pendentes, cancelado } ou
+// { ok:false, error } (offline no 1º lote do 1º arquivo -> fatal, nada salvo).
+async function indexFilesStreaming({
+  rootFolder, filesMeta = [], scannedPaths = [], fromScratch = false,
+  readText, embed, embedModel, onProgress, signal, checkpointEvery = 8,
+} = {}) {
+  let indice = fromScratch ? null : loadIndex(rootFolder);
+
+  // Modelo divergente ou fromScratch -> começa do zero (vetores incomparáveis).
+  const modeloDivergente = indice && embedModel && indice.modeloEmbedding && indice.modeloEmbedding !== embedModel;
+  if (!indice || fromScratch || modeloDivergente) {
+    indice = indiceVazio(rootFolder, embedModel);
+  }
+
+  // Assinaturas de ANTES de qualquer mutação (para preservar as dos inalterados).
+  const sigsOriginais = Object.assign({}, indice.fileSignatures || {});
+
+  // diffForIndex usa só mtime/size (fileSig) — NÃO precisa do texto. Passamos
+  // filesMeta como `files`: cada item tem { path, mtime, size } (sem texto).
+  const { novos, alterados, removidos } = diffForIndex(indice, { scannedPaths, files: filesMeta });
+  const aReindexar = novos.concat(alterados);
+
+  // Remove chunks dos removidos E dos alterados (serão regerados).
+  const pathsAremover = removidos.concat(alterados.map((f) => f.path));
+  indice = pruneChunks(indice, pathsAremover);
+
+  const processados = []; // arquivos efetivamente indexados (>=1 chunk)
+  const total = aReindexar.length;
+  let cancelado = false;
+  // nº de arquivos "resolvidos" (ok OU pendente) desde o último checkpoint.
+  let desdeCheckpoint = 0;
+
+  // Salva o índice no estado atual (checkpoint): assinaturas só dos inalterados
+  // preservados + processados até agora. Mantém meta e índice consistentes.
+  function salvarCheckpoint() {
+    const conjunto = conjuntoParaSignatures(sigsOriginais, removidos, aReindexar.map((f) => f.path), processados);
+    const paraSalvar = refreshSignatures(indice, conjunto);
+    const salvou = saveIndex(paraSalvar);
+    if (salvou) indice = paraSalvar;
+    return salvou;
+  }
+
+  for (let i = 0; i < aReindexar.length; i++) {
+    if (signal && signal.aborted) { cancelado = true; break; }
+    const meta = aReindexar[i];
+    const nome = meta.name || nomeArquivo(meta.path);
+    // Progresso DESDE o 1º arquivo (antes de ler o texto).
+    if (onProgress) {
+      onProgress({ phase: 'index', current: i + 1, total, name: nome });
+    }
+
+    // Lê o texto SOB DEMANDA (um arquivo por vez). Falha/throw -> ilegível.
+    let lido;
+    try {
+      lido = await readText(meta.path);
+    } catch (e) {
+      console.warn('[rag] indexFilesStreaming leitura falhou em', meta.path, e && e.message);
+      lido = { ok: false };
+    }
+    const texto = (lido && lido.ok && typeof lido.text === 'string') ? lido.text : '';
+
+    // Monta o "file" efêmero só com o texto deste arquivo; sai de escopo ao fim
+    // da iteração (o GC libera antes do próximo arquivo).
+    const file = { path: meta.path, name: nome, text: texto, mtime: meta.mtime, size: meta.size };
+    const r = await processarArquivo(indice, file, embed, signal, {
+      primeiroDoLote: !processados.length, origem: 'indexFilesStreaming',
+    });
+    if (r.outcome === 'fatal') return { ok: false, error: r.error };
+    indice = r.indice;
+    if (r.outcome === 'ok') processados.push({ path: meta.path, mtime: meta.mtime, size: meta.size });
+
+    // `texto`/`file` perdem a referência aqui — nada do arquivo anterior é retido.
+    desdeCheckpoint += 1;
+    if (desdeCheckpoint >= checkpointEvery) {
+      salvarCheckpoint();
+      desdeCheckpoint = 0;
+    }
+  }
+
+  // Checkpoint final (sempre) — grava o conjunto efetivo + inalterados preservados.
+  const salvou = salvarCheckpoint();
+  if (!salvou) return { ok: false, error: 'Não consegui salvar o índice.' };
+
+  // Pendentes: arquivos no disco ainda não refletidos no índice salvo.
+  const diffFinal = diffForIndex(indice, { scannedPaths, files: filesMeta });
+  const pendentes = diffFinal.novos.length + diffFinal.alterados.length;
+
+  const status = indexStatus(rootFolder);
+  return { ok: true, status, reindexados: processados.length, removidos: removidos.length, pendentes, cancelado };
 }
 
 // Responde a uma pergunta sobre o acervo indexado.
@@ -724,5 +852,6 @@ module.exports = {
   indexStatus,
   // orquestração
   indexFiles,
+  indexFilesStreaming,
   ask,
 };
