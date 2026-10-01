@@ -113,6 +113,75 @@ de progresso), sem terminal. Sugestões:
 4. Vá até a aba desejada (**Resumo**, **Mapa Mental** ou **Exercícios**) e clique em gerar. No **Resumo**, use o seletor de **direcionamento** (geral, foco em prova, revisão rápida, entender a fundo) para ajustar o tom.
 5. Use **Exportar** para salvar e compartilhar o resultado.
 
+## 🗂️ Organizar por disciplina (IA)
+
+Além dos **notebooks** (que são as subpastas do disco), o app pode montar uma
+visão **por disciplina** — ótima para quem jogou tudo numa pasta só ou quer uma
+organização que não bate com as pastas.
+
+> **100% virtual — nada muda no disco.** O recurso **não move, não renomeia, não
+> copia e não apaga** nenhum arquivo. Ele apenas cria um **mapeamento** (qual
+> arquivo pertence a qual disciplina) guardado localmente, junto das suas
+> configurações. Seus arquivos continuam exatamente onde estão.
+
+### Como disparar
+
+É uma ação **sob demanda**: na barra lateral há um botão para **organizar por
+disciplina**. O comportamento padrão do app não muda — enquanto você não clicar,
+a sidebar continua mostrando os notebooks normais. Quando você agrupa, a sidebar
+passa a exibir a visão por disciplina, e qualquer disciplina (ou tópico) pode ser
+usada como escopo para gerar **Resumo**, **Mapa Mental** ou **Exercícios**.
+
+### Os dois modos
+
+- **Por pasta (sem IA):** usa as **subpastas** da sua pasta de estudos como
+  disciplinas. É **instantâneo**, funciona **offline** e não chama a IA — ideal
+  para quem já organizou tudo em subpastas por matéria. Arquivos soltos na raiz
+  caem em **"Não classificados"**.
+- **Por conteúdo (com IA):** deixa a **IA local** ler o nome, a subpasta e um
+  trecho de cada arquivo e agrupar por assunto, em **lotes**. É o modo para pastas
+  bagunçadas. Precisa do Ollama rodando.
+
+O app **sugere** um modo ao abrir a tela (olhando se a pasta já parece organizada
+por matéria), mas a escolha é sua — dá para forçar o outro.
+
+### Separar em tópicos
+
+Há um **toggle "Separar em tópicos"**. Ligado, a IA faz um segundo passo e
+subdivide cada disciplina em tópicos (ex.: dentro de "Cálculo I", separar
+"Limites", "Derivadas"). Disciplinas com **menos de 3 arquivos** não são
+subdivididas, e arquivos que não se encaixam em nenhum tópico ficam soltos no
+nível da disciplina. O toggle é independente do modo escolhido.
+
+### Edição manual
+
+A visão por disciplina é sua para ajustar — e, de novo, **só muda o mapeamento**,
+nunca o disco. Você pode:
+
+- **Renomear** uma disciplina;
+- **Mesclar** duas disciplinas numa só;
+- **Mover** um arquivo de uma disciplina para outra;
+- **Criar** uma disciplina nova (começa vazia).
+
+### Incremental
+
+Quando você já agrupou uma pasta e volta depois de adicionar/alterar arquivos, o
+app classifica **apenas os arquivos novos ou modificados** e os encaixa nas
+disciplinas existentes (criando disciplinas novas só quando preciso) — sem
+reprocessar o que já estava classificado. Se quiser recomeçar, há a opção
+**"Reagrupar do zero"**, que descarta o mapeamento atual e classifica tudo de
+novo.
+
+### Fallback "Não classificados"
+
+Existe sempre uma disciplina **"Não classificados"** para o que a IA não soube
+rotular. No modo **por conteúdo**, se o Ollama devolver algo inválido (JSON
+quebrado) ou falhar em parte da classificação, os arquivos afetados vão para
+**"Não classificados"** em vez de quebrar o agrupamento — depois você reclassifica
+na mão ou reagrupa. Já se o Ollama estiver **totalmente offline** logo no começo,
+o agrupamento por conteúdo é **cancelado** e nada é salvo (o modo **por pasta**,
+que não usa IA, continua funcionando offline).
+
 ## 🔄 Atualizar o app
 
 O app verifica sozinho se há uma versão mais nova no GitHub e avisa dentro da
