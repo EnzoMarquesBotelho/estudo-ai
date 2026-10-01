@@ -16,6 +16,7 @@
     "build:linux": "npm run copy:vendor && electron-builder --linux",
     "build:portable": "npm run copy:vendor && electron-builder --win portable",
     "test:models": "node tests/testar-modelos.js",
+    "test:models-inc": "node tests/testar-modelos-incremental.js",
     "test:rag": "node tests/testar-rag.js",
     "test:frontend": "node tests/analise-frontend.js",
     "test:visual": "node tests/validacao-visual.js",
