@@ -3,6 +3,9 @@ dist/
 *.log
 .DS_Store
 
+# Metadados de tarefas dos agentes (ficam só na sua máquina)
+.agents/
+
 # Artefatos gerados pelos agentes de teste (ficam só na sua máquina)
 tests/screenshots/
 tests/bugs.json
