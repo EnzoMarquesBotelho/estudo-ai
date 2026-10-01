@@ -13,6 +13,7 @@ tests/relatorio-testes.md
 tests/relatorio-frontend.md
 tests/relatorio-beta.md
 tests/beta-bugs.json
+tests/modelos-estado.json
 
 # Biblioteca de terceiros copiada no build (regenerada por copy-vendor)
 src/renderer/vendor/
