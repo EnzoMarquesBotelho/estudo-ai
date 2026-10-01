@@ -24,6 +24,23 @@
         <label><input type="radio" name="scope" value="all" /> Pasta inteira</label>
       </div>
 
+      <!-- Agrupamento virtual por disciplina (IA). Nada é movido no disco. -->
+      <div class="group-box">
+        <button id="groupBtn" class="primary">🧠 Organizar por disciplina (IA)</button>
+        <label class="group-toggle">
+          <input type="checkbox" id="subtopicsToggle" />
+          Separar em tópicos
+          <span class="group-hint">divide cada disciplina em subtemas (usa a IA)</span>
+        </label>
+        <div id="groupModeHint" class="group-mode-hint" style="display:none"></div>
+        <div id="groupProgress" class="group-progress" style="display:none"></div>
+        <div id="groupActions" class="group-actions" style="display:none">
+          <button id="groupNewBtn" class="ghost small" style="display:none">Classificar novos</button>
+          <button id="groupRescanBtn" class="ghost small" style="display:none">Reagrupar do zero</button>
+          <button id="groupViewToggle" class="ghost small" style="display:none">Ver por pastas</button>
+        </div>
+      </div>
+
       <div id="notebooks" class="notebooks"></div>
 
       <div class="model-box">

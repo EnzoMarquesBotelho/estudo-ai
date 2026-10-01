@@ -9,6 +9,11 @@ const state = {
   lastResults: {},      // cache em memória: summary/mindmap/exercises
   model: null,          // modelo de IA escolhido pelo usuário
   idioma: 'auto',       // idioma do resultado ('auto' = igual ao material)
+  grouping: null,       // mapeamento de disciplinas carregado (ou null)
+  groupingView: 'pastas', // 'pastas' | 'disciplinas'
+  scopeTarget: null,    // { kind:'disciplina', id } | { kind:'topico', discId, id }
+  groupNovos: [],       // arquivos novos detectados (incremental)
+  groupRemovidos: [],   // paths removidos detectados (incremental)
 };
 
 // ------------------------------ Helpers ------------------------------
@@ -123,12 +128,13 @@ async function loadLibrary(folder) {
   const lib = await window.api.scanLibrary(folder);
   state.root = lib.root || folder;
   state.notebooks = lib.notebooks || [];
-  renderNotebooks();
   if (state.root) {
     $('#folderPath').textContent = state.root;
     $('#folderPath').title = state.root;
     window.api.startWatch(state.root);
   }
+  await loadGrouping(state.root);
+  renderSidebar();
 }
 
 function renderNotebooks() {
@@ -158,6 +164,7 @@ function renderNotebooks() {
     item.addEventListener('click', () => {
       $$('.file-item').forEach((i) => i.classList.remove('active'));
       item.classList.add('active');
+      state.scopeTarget = null;
       state.selectedFile = {
         path: decodeURIComponent(item.dataset.path),
         name: decodeURIComponent(item.dataset.name),
@@ -169,6 +176,13 @@ function renderNotebooks() {
 
 function updateTitle() {
   const t = $('#currentTitle');
+  if (state.scopeTarget) {
+    const alvo = resolveScopeTarget();
+    if (alvo) {
+      t.textContent = `${alvo.nome} (${alvo.arquivos.length} arquivos)`;
+      return;
+    }
+  }
   if (state.scope === 'all') {
     t.textContent = `Pasta inteira (${state.notebooks.reduce((s, n) => s + n.files.length, 0)} arquivos)`;
   } else if (state.selectedFile) {
@@ -176,6 +190,357 @@ function updateTitle() {
   } else {
     t.textContent = 'Nenhum arquivo selecionado';
   }
+}
+
+// ------------------------------ Agrupamento por disciplina ------------------------------
+
+// Decide o que a sidebar mostra: visão por pastas (notebooks) ou por disciplinas.
+function renderSidebar() {
+  updateGroupControls();
+  if (state.grouping && state.groupingView === 'disciplinas') {
+    renderDisciplinas();
+  } else {
+    renderNotebooks();
+  }
+  updateTitle();
+}
+
+// Carrega o mapeamento salvo e calcula o diff incremental localmente.
+async function loadGrouping(folder) {
+  state.grouping = null;
+  state.scopeTarget = null;
+  state.groupNovos = [];
+  state.groupRemovidos = [];
+  if (!folder) { state.groupingView = 'pastas'; return; }
+
+  let mapping = null;
+  try {
+    mapping = await window.api.getGrouping(folder);
+  } catch { mapping = null; }
+
+  if (!mapping) {
+    state.groupingView = 'pastas';
+    return;
+  }
+  state.grouping = mapping;
+  state.groupingView = 'disciplinas';
+
+  // Diff incremental local sobre o scan atual (mtime/caminho).
+  const atuais = state.notebooks.flatMap((n) => n.files);
+  const sigs = mapping.fileSignatures || {};
+  const vistos = new Set();
+  const novos = [];
+  for (const f of atuais) {
+    vistos.add(f.path);
+    const assinado = sigs[f.path];
+    if (assinado === undefined || assinado !== (f.mtime || 0)) novos.push(f);
+  }
+  state.groupNovos = novos;
+  state.groupRemovidos = Object.keys(sigs).filter((p) => !vistos.has(p));
+}
+
+// Atualiza os controles de agrupamento (modo sugerido, botões incrementais, visão).
+async function updateGroupControls() {
+  const actions = $('#groupActions');
+  const newBtn = $('#groupNewBtn');
+  const rescanBtn = $('#groupRescanBtn');
+  const viewToggle = $('#groupViewToggle');
+  const hint = $('#groupModeHint');
+
+  if (!state.grouping) {
+    actions.style.display = 'none';
+    newBtn.style.display = 'none';
+    rescanBtn.style.display = 'none';
+    viewToggle.style.display = 'none';
+    // Sugestão de modo para pastas ainda não agrupadas.
+    if (state.root) {
+      try {
+        const s = await window.api.suggestGroupingMode(state.root);
+        if (s && s.motivo) { hint.textContent = s.motivo; hint.style.display = 'block'; }
+        else hint.style.display = 'none';
+      } catch { hint.style.display = 'none'; }
+    } else {
+      hint.style.display = 'none';
+    }
+    return;
+  }
+
+  hint.style.display = 'none';
+  actions.style.display = 'flex';
+  rescanBtn.style.display = '';
+  viewToggle.style.display = '';
+  viewToggle.textContent = state.groupingView === 'disciplinas' ? 'Ver por pastas' : 'Ver por disciplina';
+  if (state.groupNovos.length) {
+    newBtn.style.display = '';
+    newBtn.textContent = `Classificar ${state.groupNovos.length} novos`;
+  } else {
+    newBtn.style.display = 'none';
+  }
+}
+
+// Resolve state.scopeTarget para { nome, arquivos:[path] } (ou null).
+function resolveScopeTarget() {
+  if (!state.grouping || !state.scopeTarget) return null;
+  const disc = (state.grouping.disciplinas || []).find((d) => d.id === state.scopeTarget.discId || d.id === state.scopeTarget.id);
+  if (!disc) return null;
+  if (state.scopeTarget.kind === 'topico') {
+    const t = (disc.topicos || []).find((x) => x.id === state.scopeTarget.id);
+    if (!t) return null;
+    return { nome: `${disc.nome} › ${t.nome}`, arquivos: t.arquivos || [] };
+  }
+  return { nome: disc.nome, arquivos: disc.arquivos || [] };
+}
+
+// Desenha disciplinas (com tópicos aninhados) reusando .notebook/.file-item.
+function renderDisciplinas() {
+  const wrap = $('#notebooks');
+  wrap.innerHTML = '';
+  const disciplinas = (state.grouping && state.grouping.disciplinas) || [];
+  if (!disciplinas.length) {
+    placeholder(wrap, 'Nenhuma disciplina ainda. Clique em "Organizar por disciplina".');
+    return;
+  }
+
+  // Lista de destinos para o seletor de "mover arquivo".
+  const destinos = disciplinas.map((d) => `<option value="${d.id}">${escapeHtml(d.nome)}</option>`).join('');
+
+  for (const disc of disciplinas) {
+    const el = document.createElement('div');
+    el.className = 'notebook open';
+
+    // Arquivos que já estão em algum tópico (não repetir no nível da disciplina).
+    const emTopico = new Set();
+    for (const t of disc.topicos || []) for (const p of t.arquivos || []) emTopico.add(p);
+
+    const topicosHtml = (disc.topicos || []).map((t) => {
+      const files = (t.arquivos || []).map((p) => fileItemHtml(p, destinos, disc.id)).join('');
+      return `
+        <div class="topico">
+          <div class="topico-header"><span>🏷️ ${escapeHtml(t.nome)}</span><span class="count">${(t.arquivos || []).length}</span></div>
+          <div class="notebook-files">${files}</div>
+        </div>`;
+    }).join('');
+
+    const soltos = (disc.arquivos || []).filter((p) => !emTopico.has(p))
+      .map((p) => fileItemHtml(p, destinos, disc.id)).join('');
+
+    el.innerHTML = `
+      <div class="notebook-header" data-disc="${disc.id}">
+        <span>📚 ${escapeHtml(disc.nome)}</span>
+        <span class="count">${(disc.arquivos || []).length}</span>
+      </div>
+      <div class="disc-actions">
+        <button class="ghost small" data-act="rename" data-disc="${disc.id}">Renomear</button>
+        <button class="ghost small" data-act="merge" data-disc="${disc.id}">Mesclar</button>
+        <button class="ghost small" data-act="create">Nova</button>
+      </div>
+      <div class="notebook-files">${topicosHtml}${soltos}</div>`;
+    wrap.appendChild(el);
+  }
+
+  bindDisciplinaEvents(destinos);
+}
+
+// Monta o HTML de um arquivo da visão por disciplina (com seletor de mover).
+function fileItemHtml(path, destinos, discId) {
+  const nome = basenameFromPath(path);
+  return `
+    <div class="file-item" data-path="${encodeURIComponent(path)}" data-name="${encodeURIComponent(nome)}" title="${escapeHtml(nome)}">${escapeHtml(nome)}</div>
+    <div class="file-move">
+      <select data-move-path="${encodeURIComponent(path)}" data-from="${discId}" aria-label="Mover ${escapeHtml(nome)} para outra disciplina">
+        <option value="">Mover para…</option>
+        ${destinos}
+      </select>
+    </div>`;
+}
+
+// Nome do arquivo a partir do caminho absoluto (por string, igual ao núcleo).
+function basenameFromPath(p) {
+  const partes = String(p).replace(/\\/g, '/').split('/');
+  return partes[partes.length - 1];
+}
+
+function bindDisciplinaEvents(destinos) {
+  // Selecionar disciplina como escopo (clique no cabeçalho).
+  $$('.notebook-header[data-disc]').forEach((h) => {
+    h.addEventListener('click', () => {
+      state.scope = 'file';
+      $$('input[name="scope"]').forEach((r) => { r.checked = false; });
+      state.selectedFile = null;
+      state.scopeTarget = { kind: 'disciplina', id: h.dataset.disc };
+      $$('.file-item').forEach((i) => i.classList.remove('active'));
+      updateTitle();
+      toast('Escopo: disciplina', 'success');
+    });
+  });
+
+  // Selecionar tópico como escopo.
+  $$('.topico-header').forEach((h) => {
+    const disc = h.closest('.notebook').querySelector('.notebook-header[data-disc]');
+    const discId = disc ? disc.dataset.disc : null;
+    // tópicos: busca o id pelo nome dentro do mapeamento.
+    h.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const d = (state.grouping.disciplinas || []).find((x) => x.id === discId);
+      if (!d) return;
+      const nomeTop = h.querySelector('span').textContent.replace(/^🏷️\s*/, '');
+      const t = (d.topicos || []).find((x) => x.nome === nomeTop);
+      if (!t) return;
+      state.scopeTarget = { kind: 'topico', discId, id: t.id };
+      state.selectedFile = null;
+      updateTitle();
+      toast('Escopo: tópico', 'success');
+    });
+  });
+
+  // Ações de edição.
+  $$('.disc-actions button[data-act]').forEach((b) => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); onDiscAction(b.dataset.act, b.dataset.disc); });
+  });
+
+  // Seletor de mover arquivo.
+  $$('select[data-move-path]').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const toDiscId = sel.value;
+      if (!toDiscId) return;
+      const path = decodeURIComponent(sel.dataset.movePath);
+      await applyEdit('move', { path, toDiscId });
+    });
+    sel.addEventListener('click', (e) => e.stopPropagation());
+  });
+
+  // Clique num arquivo da visão por disciplina seleciona-o (escopo arquivo).
+  $$('#notebooks .file-item').forEach((item) => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      $$('.file-item').forEach((i) => i.classList.remove('active'));
+      item.classList.add('active');
+      state.scopeTarget = null;
+      state.selectedFile = {
+        path: decodeURIComponent(item.dataset.path),
+        name: decodeURIComponent(item.dataset.name),
+      };
+      updateTitle();
+    });
+  });
+}
+
+function onDiscAction(act, discId) {
+  const disciplinas = (state.grouping && state.grouping.disciplinas) || [];
+  if (act === 'rename') {
+    const atual = disciplinas.find((d) => d.id === discId);
+    const novoNome = window.prompt('Novo nome da disciplina:', atual ? atual.nome : '');
+    if (novoNome && novoNome.trim()) applyEdit('rename', { discId, novoNome: novoNome.trim() });
+  } else if (act === 'create') {
+    const novoNome = window.prompt('Nome da nova disciplina:', '');
+    if (novoNome && novoNome.trim()) applyEdit('create', { novoNome: novoNome.trim() });
+  } else if (act === 'merge') {
+    const outras = disciplinas.filter((d) => d.id !== discId);
+    if (!outras.length) return toast('Não há outra disciplina para mesclar.', 'error');
+    const lista = outras.map((d, i) => `${i + 1}) ${d.nome}`).join('\n');
+    const escolha = window.prompt('Mesclar nesta disciplina (digite o número):\n' + lista, '1');
+    const idx = Number(escolha) - 1;
+    if (Number.isInteger(idx) && outras[idx]) {
+      applyEdit('merge', { sourceId: discId, targetId: outras[idx].id });
+    }
+  }
+}
+
+async function applyEdit(op, params) {
+  const res = await window.api.editGrouping({ folder: state.root, op, params });
+  if (!res || !res.ok) return toast((res && res.error) || 'Falha na edição.', 'error');
+  state.grouping = res.mapping;
+  state.scopeTarget = null;
+  renderSidebar();
+  toast('Agrupamento atualizado', 'success');
+}
+
+// Progresso do agrupamento — função NOVA e separada (consome outro shape/canal).
+function bindGroupingProgress(container) {
+  window.api.onGroupingProgress((p) => {
+    const label = p.phase === 'topicos' ? 'Separando em tópicos…' : 'Classificando disciplinas…';
+    const pct = p.total ? Math.round((p.current / p.total) * 100) : 0;
+    container.className = 'group-progress show';
+    container.innerHTML =
+      `<div class="placeholder" style="margin-top:0">${label}` +
+      `<br><small>${escapeHtml(p.message || '')} (${p.current || 0}/${p.total || 0})</small>` +
+      `<div class="setup-progress-bar" style="margin-top:10px"><div class="setup-progress-fill" style="width:${pct}%"></div></div></div>`;
+  });
+}
+
+// Roda o agrupamento. { runMode, fromScratch }
+async function runGrouping({ runMode = 'full', fromScratch = false } = {}) {
+  if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
+  const btn = $('#groupBtn');
+  const progress = $('#groupProgress');
+  const subtopics = $('#subtopicsToggle').checked;
+
+  // Lê os arquivos a enviar: full = todos; incremental = só os novos.
+  let fonte;
+  if (runMode === 'incremental' && !fromScratch) {
+    fonte = state.groupNovos;
+  } else {
+    fonte = state.notebooks.flatMap((n) => n.files);
+  }
+  if (!fonte.length) return toast('Nenhum arquivo para agrupar.', 'error');
+
+  const files = [];
+  for (const f of fonte) {
+    const r = await window.api.readFile(f.path);
+    if (r.ok && typeof r.text === 'string') {
+      files.push({ name: r.name || basenameFromPath(f.path), text: r.text, path: f.path, mtime: f.mtime, size: f.size });
+    }
+  }
+  if (!files.length) return toast('Nenhum arquivo legível para agrupar.', 'error');
+
+  btn.disabled = true;
+  progress.className = 'group-progress show';
+  progress.innerHTML = '<div class="placeholder" style="margin-top:0">Preparando…</div>';
+  bindGroupingProgress(progress);
+
+  const mode = (state.grouping && !fromScratch) ? state.grouping.mode : undefined;
+  const res = await window.api.runGrouping({
+    folder: state.root,
+    files,
+    mode,
+    subtopics,
+    fromScratch,
+    runMode,
+    removidos: state.groupRemovidos,
+  });
+
+  btn.disabled = false;
+  progress.className = 'group-progress';
+  progress.innerHTML = '';
+  progress.style.display = 'none';
+
+  if (!res || !res.ok) {
+    return toast((res && res.error) || 'Falha ao agrupar.', 'error');
+  }
+  state.grouping = res.mapping;
+  state.groupingView = 'disciplinas';
+  state.scopeTarget = null;
+  // Recalcula o diff local (não há novos após uma run completa dos atuais).
+  await recomputeDiff();
+  renderSidebar();
+  toast('Agrupamento concluído', 'success');
+}
+
+// Recalcula state.groupNovos/groupRemovidos a partir do mapeamento atual.
+async function recomputeDiff() {
+  const mapping = state.grouping;
+  if (!mapping) { state.groupNovos = []; state.groupRemovidos = []; return; }
+  const atuais = state.notebooks.flatMap((n) => n.files);
+  const sigs = mapping.fileSignatures || {};
+  const vistos = new Set();
+  const novos = [];
+  for (const f of atuais) {
+    vistos.add(f.path);
+    const assinado = sigs[f.path];
+    if (assinado === undefined || assinado !== (f.mtime || 0)) novos.push(f);
+  }
+  state.groupNovos = novos;
+  state.groupRemovidos = Object.keys(sigs).filter((p) => !vistos.has(p));
 }
 
 // Lê o texto de UM arquivo (escopo "arquivo selecionado").
@@ -200,6 +565,26 @@ async function gatherFiles() {
     }
   }
   if (!out.length) return { ok: false, error: 'Nenhum arquivo legível na pasta.' };
+  return { ok: true, files: out };
+}
+
+// Lê os arquivos do escopo de disciplina/tópico selecionado (igual gatherFiles,
+// mas a origem é a lista do mapeamento, não os notebooks).
+async function gatherFilesForScope() {
+  const alvo = resolveScopeTarget();
+  if (!alvo || !alvo.arquivos.length) return { ok: false, error: 'Selecione uma disciplina ou tópico com arquivos.' };
+  // Reusa os metadados do scan (mtime/size) quando disponíveis.
+  const metaPorPath = {};
+  for (const f of state.notebooks.flatMap((n) => n.files)) metaPorPath[f.path] = f;
+  const out = [];
+  for (const path of alvo.arquivos) {
+    const r = await window.api.readFile(path);
+    if (r.ok && r.text && r.text.trim()) {
+      const meta = metaPorPath[path] || {};
+      out.push({ name: r.name || basenameFromPath(path), text: r.text, path, mtime: meta.mtime, size: meta.size });
+    }
+  }
+  if (!out.length) return { ok: false, error: 'Nenhum arquivo legível neste escopo.' };
   return { ok: true, files: out };
 }
 
@@ -239,7 +624,13 @@ async function doSummary() {
   };
   let res;
   bindStreaming(out);
-  if (state.scope === 'all') {
+  if (state.scopeTarget) {
+    const g = await gatherFilesForScope();
+    if (!g.ok) return toast(g.error, 'error');
+    spinner(out, 'Resumindo a disciplina');
+    bindFolderProgress(out, 'Resumindo a disciplina');
+    res = await window.api.summaryFolder(g.files, opts);
+  } else if (state.scope === 'all') {
     const g = await gatherFiles();
     if (!g.ok) return toast(g.error, 'error');
     spinner(out, 'Resumindo a pasta inteira');
@@ -263,7 +654,13 @@ async function doMindmap() {
   const out = $('#mindmapOutput');
   const opts = { model: state.model, idioma: state.idioma };
   let res;
-  if (state.scope === 'all') {
+  if (state.scopeTarget) {
+    const g = await gatherFilesForScope();
+    if (!g.ok) return toast(g.error, 'error');
+    spinner(out, 'Montando o mapa da disciplina');
+    bindFolderProgress(out, 'Montando o mapa da disciplina');
+    res = await window.api.mindmapFolder(g.files, opts);
+  } else if (state.scope === 'all') {
     const g = await gatherFiles();
     if (!g.ok) return toast(g.error, 'error');
     spinner(out, 'Montando o mapa da pasta');
@@ -291,7 +688,13 @@ async function doExercises() {
   };
   let res;
   bindStreaming(out);
-  if (state.scope === 'all') {
+  if (state.scopeTarget) {
+    const g = await gatherFilesForScope();
+    if (!g.ok) return toast(g.error, 'error');
+    spinner(out, 'Criando exercícios da disciplina');
+    bindFolderProgress(out, 'Criando exercícios da disciplina');
+    res = await window.api.exercisesFolder(g.files, opts);
+  } else if (state.scope === 'all') {
     const g = await gatherFiles();
     if (!g.ok) return toast(g.error, 'error');
     spinner(out, 'Criando exercícios da pasta');
@@ -529,8 +932,18 @@ function bindEvents() {
   });
 
   $$('input[name="scope"]').forEach((r) =>
-    r.addEventListener('change', (e) => { state.scope = e.target.value; updateTitle(); })
+    r.addEventListener('change', (e) => { state.scope = e.target.value; state.scopeTarget = null; updateTitle(); })
   );
+
+  // Agrupamento por disciplina.
+  $('#groupBtn').addEventListener('click', () => runGrouping({ runMode: 'full', fromScratch: false }));
+  $('#groupNewBtn').addEventListener('click', () => runGrouping({ runMode: 'incremental', fromScratch: false }));
+  $('#groupRescanBtn').addEventListener('click', () => runGrouping({ runMode: 'full', fromScratch: true }));
+  $('#groupViewToggle').addEventListener('click', () => {
+    state.groupingView = state.groupingView === 'disciplinas' ? 'pastas' : 'disciplinas';
+    state.scopeTarget = null;
+    renderSidebar();
+  });
 
   $$('.tab').forEach((tab) =>
     tab.addEventListener('click', () => {

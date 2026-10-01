@@ -295,3 +295,29 @@ select {
 .update-banner.error { border-color: var(--red); }
 
 button.small { padding: 6px 12px; font-size: 13px; }
+
+/* ---------------- Agrupamento por disciplina ---------------- */
+.group-box { display: flex; flex-direction: column; gap: 8px; }
+.group-toggle { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: pointer; }
+.group-hint { font-size: 11px; color: var(--text-dim); width: 100%; padding-left: 22px; }
+.group-mode-hint { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+.group-progress { display: none; }
+.group-progress.show { display: block; }
+.group-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Ações de edição por disciplina (renomear/mesclar/novo) */
+.disc-actions { display: flex; gap: 4px; flex-wrap: wrap; padding: 6px 10px; border-top: 1px solid var(--bg-3); }
+.disc-actions button { padding: 4px 8px; font-size: 11px; }
+
+/* Seletor de destino de "mover arquivo" dentro de um arquivo */
+.file-move { padding: 4px 10px 6px 22px; border-top: 1px solid var(--bg-3); }
+.file-move select { width: 100%; font-size: 11px; padding: 4px 6px; }
+
+/* Aninhamento visual dos tópicos dentro de uma disciplina */
+.topico { border-left: 2px solid var(--border); margin-left: 10px; }
+.topico-header {
+  padding: 6px 10px 6px 14px; font-size: 12px; font-weight: 600; color: var(--text-dim);
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+}
+.topico-header:hover { color: var(--text); }
+.topico .file-item { padding-left: 30px; }

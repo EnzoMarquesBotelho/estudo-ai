@@ -39,6 +39,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('ai:token', (_e, texto) => cb(texto));
   },
 
+  // Agrupamento virtual por disciplina
+  getGrouping: (folder) => ipcRenderer.invoke('grouping:get', folder),
+  runGrouping: (args) => ipcRenderer.invoke('grouping:run', args),
+  editGrouping: (args) => ipcRenderer.invoke('grouping:edit', args),
+  suggestGroupingMode: (folder) => ipcRenderer.invoke('grouping:suggestMode', folder),
+  onGroupingProgress: (cb) => {
+    ipcRenderer.removeAllListeners('grouping:progress');
+    ipcRenderer.on('grouping:progress', (_e, data) => cb(data));
+  },
+
   // Exportar
   exportSave: (title, kind, payload) =>
     ipcRenderer.invoke('export:save', { title, kind, payload }),
