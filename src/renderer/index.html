@@ -27,7 +27,23 @@
       <div id="notebooks" class="notebooks"></div>
 
       <div class="model-box">
-        <label class="model-label">Modelo de IA</label>
+        <label class="model-label" for="langSelect">Idioma do resultado</label>
+        <select id="langSelect" class="model-select" aria-label="Idioma em que o conteúdo é gerado">
+          <option value="auto" selected>Igual ao material</option>
+          <option value="Português do Brasil">Português (BR)</option>
+          <option value="Português de Portugal">Português (PT)</option>
+          <option value="English">Inglês</option>
+          <option value="Español">Espanhol</option>
+          <option value="Français">Francês</option>
+          <option value="Deutsch">Alemão</option>
+          <option value="Italiano">Italiano</option>
+          <option value="日本語">Japonês</option>
+          <option value="中文">Chinês</option>
+        </select>
+      </div>
+
+      <div class="model-box">
+        <label class="model-label" for="modelSelect">Modelo de IA</label>
         <select id="modelSelect" class="model-select" aria-label="Modelo de IA em uso"><option>—</option></select>
         <details class="model-more">
           <summary>Baixar outro modelo</summary>
@@ -53,6 +69,17 @@
 
     <!-- Área principal -->
     <main id="main">
+      <!-- Aviso de atualização disponível (GitHub) -->
+      <div id="updateBanner" class="update-banner" style="display:none" role="status">
+        <span class="update-icon">⬆️</span>
+        <span id="updateText" class="update-text">Há uma nova versão disponível.</span>
+        <div class="update-actions">
+          <button id="updateApplyBtn" class="primary small">Atualizar agora</button>
+          <button id="updateRepoBtn" class="ghost small" style="display:none">Abrir no GitHub</button>
+          <button id="updateDismissBtn" class="ghost small" aria-label="Dispensar aviso">Depois</button>
+        </div>
+      </div>
+
       <header id="topbar">
         <div id="currentTitle" class="current-title">Nenhum arquivo selecionado</div>
         <div class="tabs" role="tablist" aria-label="Seções">
@@ -69,6 +96,12 @@
             <option value="curto">Resumo curto</option>
             <option value="médio" selected>Resumo médio</option>
             <option value="detalhado">Resumo detalhado</option>
+          </select>
+          <select id="summaryFoco" aria-label="Direcionamento do resumo">
+            <option value="geral" selected>Foco geral</option>
+            <option value="prova">Foco em prova</option>
+            <option value="revisao">Revisão rápida</option>
+            <option value="aprofundado">Entender a fundo</option>
           </select>
           <button id="genSummary" class="primary">Gerar resumo</button>
           <button id="exportSummary" class="ghost">Exportar</button>

@@ -8,6 +8,8 @@ App de desktop que gera **resumos**, **mapas mentais** e **listas de exercícios
 - 📓 Organização em **notebooks** (cada subpasta vira um caderno, estilo OneNote)
 - 📄 Lê **qualquer tipo de texto**: `.txt, .md, .pdf, .docx, .html, .csv, .json, .srt`, código-fonte e muitos outros
 - 🧾 Abas separadas para **Resumo**, **Mapa Mental** e **Exercícios**
+- 🎯 **Direcionamento do resumo**: escolha o foco — **geral**, **foco em prova** (prioriza o que mais cai, destaca termos-chave e lista pontos de atenção), **revisão rápida** ou **entender a fundo**
+- 🌍 **Idioma do resultado**: gere o conteúdo no mesmo idioma do material (padrão) ou em outro — português (BR/PT), inglês, espanhol, francês, alemão, italiano, japonês ou chinês. Vale para resumo, mapa mental e exercícios
 - 🎯 Gera para **um arquivo específico** ou para a **pasta inteira** (a pasta resume cada arquivo e depois sintetiza tudo — cobre todo o material, não só o início)
 - 🔄 **Auto-atualização**: detecta arquivos novos/alterados e recarrega sozinho
 - 📤 **Exporta** resultados em `.md` ou `.html` para compartilhar com outros PCs
@@ -22,7 +24,9 @@ App de desktop que gera **resumos**, **mapas mentais** e **listas de exercícios
 
 1. **`INSTALAR.bat`** — checa Node.js e Ollama, instala dependências e baixa o modelo. Rode uma vez.
 2. **`ABRIR ESTUDO AI.bat`** — abre o app (e inicia a IA local).
-3. **`GERAR EXECUTAVEL.bat`** — cria o `.exe` na pasta `dist/`.
+3. **`ATUALIZAR.bat`** — atualiza o app para a versão mais nova do GitHub (precisa de Git).
+4. **`GERAR EXECUTAVEL.bat`** — cria o instalador **e** a versão portátil na pasta `dist/`.
+5. **`GERAR PORTATIL.bat`** — cria **só** a versão portátil (um `.exe` que não precisa instalar; a forma mais simples de passar para amigos).
 
 **macOS / Linux** — pelo terminal, na pasta do projeto:
 
@@ -102,8 +106,33 @@ de progresso), sem terminal. Sugestões:
 
 1. Abra o app e clique em **Selecionar pasta de estudos**.
 2. Escolha na barra lateral um **arquivo** ou marque **Pasta inteira**.
-3. Vá até a aba desejada (**Resumo**, **Mapa Mental** ou **Exercícios**) e clique em gerar.
-4. Use **Exportar** para salvar e compartilhar o resultado.
+3. (Opcional) Em **Idioma do resultado**, na barra lateral, escolha a língua de saída. O padrão "Igual ao material" mantém o idioma dos seus arquivos.
+4. Vá até a aba desejada (**Resumo**, **Mapa Mental** ou **Exercícios**) e clique em gerar. No **Resumo**, use o seletor de **direcionamento** (geral, foco em prova, revisão rápida, entender a fundo) para ajustar o tom.
+5. Use **Exportar** para salvar e compartilhar o resultado.
+
+## 🔄 Atualizar o app
+
+O app verifica sozinho se há uma versão mais nova no GitHub e avisa dentro da
+própria interface (um aviso aparece no topo quando há atualização).
+
+**Pela interface:** quando o aviso surgir, clique em **"Atualizar agora"**. O app
+busca as novidades, aplica (`git pull`) e reinstala as dependências. Ao terminar,
+ele **reinicia sozinho** (com uma contagem de 5s) para carregar a nova versão —
+você também pode clicar em **"Reiniciar agora"** ou **"Reiniciar depois"**.
+
+**Sem abrir o app** — dê **duplo-clique** no atualizador:
+
+- **Windows:** `ATUALIZAR.bat`
+- **macOS / Linux:** `bash ATUALIZAR.sh`
+
+Ele compara sua cópia com o GitHub e, se houver novidade, atualiza o código e as
+dependências. Se já estiver na última versão, apenas avisa.
+
+> **Requisitos:** a atualização automática funciona na versão instalada **via Git**
+> (a pasta tem `.git`) e com o **Git** instalado (https://git-scm.com). Se você usa
+> o `.exe` empacotado (sem `.git`), o app apenas **notifica** e abre a página do
+> projeto para você baixar a versão nova. Alterações locais não salvas são guardadas
+> automaticamente (`git stash`) antes de atualizar, para não serem perdidas.
 
 ## ⚠️ Aviso de segurança na primeira execução (normal)
 
@@ -114,6 +143,20 @@ app é 100% local e de código aberto. Como liberar:
 - **Windows (SmartScreen):** aparece "O Windows protegeu o seu computador".
   Clique em **"Mais informações"** e depois em **"Executar assim mesmo"**.
   O Windows lembra da escolha; nas próximas vezes abre direto.
+- **Windows (Controle de Aplicativo Inteligente / Smart App Control):** no
+  Windows 11 recente pode aparecer "O Controle de Aplicativo Inteligente
+  bloqueou um arquivo que pode não ser seguro", **sem** a opção "Executar assim
+  mesmo". Esse recurso é mais rígido e bloqueia executáveis sem assinatura paga.
+  Para liberar:
+  1. **Remova a "marca da Internet"** do arquivo baixado: clique com o botão
+     direito no `.exe` → **Propriedades** → marque **"Desbloquear"** → **OK**.
+  2. Se ainda bloquear, ajuste o recurso em **Configurações → Privacidade e
+     segurança → Segurança do Windows → Controle de aplicativo e navegador →
+     Controle de aplicativo inteligente**. Se estiver em **"Avaliação"**, ele se
+     desliga sozinho quando atrapalha; se estiver **"Ativado"**, desligá-lo é
+     **permanente** (só volta reinstalando o Windows) — avalie com cuidado.
+  3. Alternativa sem gerar `.exe`: rode o app pelo código com `ABRIR ESTUDO AI.bat`
+     (usa `npm start`), que normalmente não é barrado.
 - **Windows (antivírus):** se o antivírus remover o arquivo, adicione uma
   **exceção** para a pasta do app e baixe/execute de novo.
 - **macOS:** se disser "não é possível abrir (desenvolvedor não identificado)",
@@ -199,15 +242,23 @@ As imagens ficam em `tests/screenshots/` e o resultado é anexado ao
 - **Usuário (executável limpo):** o build **não inclui** `tests/` nem `scripts/`
   (veja `files` no `package.json`) — o usuário recebe só o app.
 
-### Distribuir uma nova versão (manual, sem auto-update)
+### Distribuir para outras pessoas (uso pessoal / amigos)
 
-O app **não** tem auto-atualização. Para distribuir uma versão nova:
+Para passar o app a poucas pessoas próximas, a **versão portátil** é a mais simples:
+um único `.exe` que não precisa instalar.
 
-1. Gere o executável: `npm run build:win` (o instalador e o portátil ficam em `dist/`).
-2. Compartilhe o `.exe` gerado com quem for usar (ou publique no GitHub Releases
-   manualmente, se quiser um lugar central para download).
+1. Gere o portátil com **`GERAR PORTATIL.bat`** (ou `npm run build:portable`).
+   O arquivo `Estudo AI <versão>.exe` fica na pasta `dist/`.
+2. Envie esse `.exe` para a pessoa (pen drive, nuvem, etc.).
+3. Na primeira execução, o Windows pode avisar que o app não é assinado — veja
+   **"Aviso de segurança na primeira execução"** acima para liberar (incluindo o
+   caso do **Controle de Aplicativo Inteligente** no Windows 11).
 
-Cada pessoa baixa e instala a versão nova por conta própria.
+> **Sobre a atualização:** quem usa o `.exe` portátil (sem a pasta `.git`) recebe
+> apenas o **aviso** de que há versão nova e um atalho para o GitHub — o `git pull`
+> automático só funciona na cópia instalada via Git. Para distribuir uma versão
+> nova do portátil, gere o `.exe` de novo e reenvie (ou publique no GitHub Releases).
+> Quem usa a versão via Git atualiza sozinho pelo botão **"Atualizar agora"** no app.
 
 ## Privacidade
 

@@ -60,4 +60,14 @@ contextBridge.exposeInMainWorld('api', {
   getModel: () => ipcRenderer.invoke('model:get'),
   setModel: (model) => ipcRenderer.invoke('model:set', model),
   pullModel: (model) => ipcRenderer.invoke('model:pull', model),
+
+  // Atualização do app (GitHub)
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateApply: () => ipcRenderer.invoke('update:apply'),
+  updateOpenRepo: () => ipcRenderer.invoke('update:openRepo'),
+  updateRestart: () => ipcRenderer.invoke('update:restart'),
+  onUpdateProgress: (cb) => {
+    ipcRenderer.removeAllListeners('update:progress');
+    ipcRenderer.on('update:progress', (_e, data) => cb(data));
+  },
 });

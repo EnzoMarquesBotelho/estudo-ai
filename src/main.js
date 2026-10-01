@@ -10,6 +10,7 @@ const watcher = require('./services/watcher');
 const ai = require('./services/ai');
 const exporter = require('./services/exporter');
 const setup = require('./services/setup');
+const updater = require('./services/updater');
 
 let mainWindow = null;
 
@@ -204,4 +205,42 @@ ipcMain.handle('setup:pullModel', async (_evt, model) => {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+});
+
+// ---- Atualização do app (via GitHub) ----
+// Verifica se há uma versão mais nova no GitHub (só precisa de internet).
+ipcMain.handle('update:check', async () => {
+  try {
+    return await updater.checkForUpdates();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Aplica a atualização localmente (git pull + npm install), com progresso.
+ipcMain.handle('update:apply', async () => {
+  try {
+    return await updater.applyUpdate((p) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update:progress', p);
+      }
+    });
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Abre a página do projeto no navegador (fallback para versão empacotada).
+ipcMain.handle('update:openRepo', async () => {
+  shell.openExternal(updater.REPO_URL);
+  return { ok: true };
+});
+
+// Reinicia o app para carregar a versão recém-atualizada.
+ipcMain.handle('update:restart', async () => {
+  // Fecha o monitoramento de arquivos antes de sair.
+  try { watcher.stop(); } catch {}
+  app.relaunch();
+  app.exit(0);
+  return { ok: true };
 });

@@ -56,8 +56,7 @@
             "x64"
           ]
         }
-      ],
-      "publisherName": "Estudo AI"
+      ]
     },
     "mac": {
       "category": "public.app-category.education",

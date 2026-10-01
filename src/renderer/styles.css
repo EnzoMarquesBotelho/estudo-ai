@@ -272,3 +272,26 @@ select {
   #sidebar { width: 200px; min-width: 200px; padding: 12px; }
   .tab { padding: 8px 12px; font-size: 13px; }
 }
+
+/* ---------------- Aviso de atualização ---------------- */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: linear-gradient(90deg, rgba(137,180,250,0.18), rgba(203,166,247,0.12));
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+.update-banner .update-icon { font-size: 18px; }
+.update-banner .update-text { flex: 1; min-width: 180px; }
+.update-banner .update-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.update-banner.updating { border-color: var(--accent-2); }
+.update-banner.done { border-color: var(--green); }
+.update-banner.error { border-color: var(--red); }
+
+button.small { padding: 6px 12px; font-size: 13px; }

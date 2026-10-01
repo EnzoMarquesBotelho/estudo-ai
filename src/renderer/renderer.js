@@ -8,6 +8,7 @@ const state = {
   scope: 'file',        // 'file' | 'all'
   lastResults: {},      // cache em memória: summary/mindmap/exercises
   model: null,          // modelo de IA escolhido pelo usuário
+  idioma: 'auto',       // idioma do resultado ('auto' = igual ao material)
 };
 
 // ------------------------------ Helpers ------------------------------
@@ -230,7 +231,12 @@ function bindStreaming(container) {
 // ------------------------------ IA: ações ------------------------------
 async function doSummary() {
   const out = $('#summaryOutput');
-  const opts = { nivel: $('#summaryLevel').value, model: state.model };
+  const opts = {
+    nivel: $('#summaryLevel').value,
+    foco: $('#summaryFoco').value,
+    idioma: state.idioma,
+    model: state.model,
+  };
   let res;
   bindStreaming(out);
   if (state.scope === 'all') {
@@ -255,7 +261,7 @@ async function doSummary() {
 
 async function doMindmap() {
   const out = $('#mindmapOutput');
-  const opts = { model: state.model };
+  const opts = { model: state.model, idioma: state.idioma };
   let res;
   if (state.scope === 'all') {
     const g = await gatherFiles();
@@ -280,6 +286,7 @@ async function doExercises() {
   const opts = {
     quantidade: Number($('#exQtd').value),
     tipo: $('#exTipo').value,
+    idioma: state.idioma,
     model: state.model,
   };
   let res;
@@ -551,11 +558,121 @@ function bindEvents() {
   });
   $('#pullModelBtn').addEventListener('click', pullNewModel);
 
+  // Idioma do resultado (vale para resumo, mapa mental e exercícios).
+  $('#langSelect').addEventListener('change', (e) => {
+    state.idioma = e.target.value;
+    window.api.cacheSet('ui:idioma', state.idioma);
+    const sel = e.target;
+    const label = sel.options[sel.selectedIndex].textContent;
+    toast('Idioma do resultado: ' + label, 'success');
+  });
+
   // Auto-atualização quando a pasta muda.
   window.api.onLibraryChanged(async () => {
     await loadLibrary(state.root);
     toast('Biblioteca atualizada automaticamente', 'success');
   });
+}
+
+// ------------------------------ Atualização do app ------------------------------
+// Verifica o GitHub e, se houver versão nova, mostra um aviso no topo do app.
+async function checkForUpdates() {
+  let info;
+  try {
+    info = await window.api.updateCheck();
+  } catch {
+    return; // sem internet / falha silenciosa: não atrapalha o uso
+  }
+  if (!info || !info.ok) return;        // erro de rede: ignora silenciosamente
+  if (!info.updateAvailable) return;    // já está atualizado
+
+  const banner = $('#updateBanner');
+  const text = $('#updateText');
+  const applyBtn = $('#updateApplyBtn');
+  const repoBtn = $('#updateRepoBtn');
+
+  text.textContent = info.message || 'Há uma nova versão disponível.';
+
+  if (info.canApply) {
+    applyBtn.style.display = '';
+    repoBtn.style.display = 'none';
+  } else {
+    // Versão empacotada (sem git): só dá para abrir o GitHub.
+    applyBtn.style.display = 'none';
+    repoBtn.style.display = '';
+  }
+  banner.style.display = 'flex';
+}
+
+// Executa a atualização (git pull + npm install) mostrando progresso no banner.
+async function applyUpdate() {
+  const banner = $('#updateBanner');
+  const text = $('#updateText');
+  const applyBtn = $('#updateApplyBtn');
+  const dismissBtn = $('#updateDismissBtn');
+
+  applyBtn.disabled = true;
+  dismissBtn.disabled = true;
+  banner.className = 'update-banner updating';
+  text.textContent = 'Iniciando atualização…';
+
+  window.api.onUpdateProgress((p) => {
+    if (p && p.message) text.textContent = p.message;
+  });
+
+  const res = await window.api.updateApply();
+  applyBtn.disabled = false;
+  dismissBtn.disabled = false;
+
+  if (res && res.ok) {
+    banner.className = 'update-banner done';
+    applyBtn.style.display = 'none';
+    toast('Atualização concluída', 'success');
+
+    // Reinicia sozinho para carregar a nova versão (com contagem regressiva).
+    const restartBtn = $('#updateApplyBtn');
+    restartBtn.textContent = 'Reiniciar agora';
+    restartBtn.style.display = '';
+    restartBtn.disabled = false;
+    restartBtn.onclick = () => window.api.updateRestart();
+    dismissBtn.textContent = 'Reiniciar depois';
+
+    let segundos = 5;
+    const atualizarTexto = () => {
+      text.textContent = `Atualizado! Reiniciando em ${segundos}s para aplicar a nova versão…`;
+    };
+    atualizarTexto();
+    const timer = setInterval(() => {
+      segundos -= 1;
+      if (segundos <= 0) {
+        clearInterval(timer);
+        window.api.updateRestart();
+      } else {
+        atualizarTexto();
+      }
+    }, 1000);
+
+    // "Reiniciar depois" cancela a contagem e deixa o usuário continuar.
+    dismissBtn.onclick = () => {
+      clearInterval(timer);
+      text.textContent = 'Atualizado! A nova versão será usada quando você reabrir o app.';
+      restartBtn.textContent = 'Reiniciar agora';
+    };
+  } else {
+    banner.className = 'update-banner error';
+    text.textContent = '⚠️ ' + ((res && res.error) || 'Falha ao atualizar.');
+    toast('Falha ao atualizar', 'error');
+  }
+}
+
+function bindUpdateEvents() {
+  // Usamos onclick (não addEventListener) porque applyUpdate reatribui esses
+  // handlers depois de concluir — assim não ficam dois ouvintes empilhados.
+  $('#updateApplyBtn').onclick = applyUpdate;
+  $('#updateRepoBtn').onclick = () => window.api.updateOpenRepo();
+  $('#updateDismissBtn').onclick = () => {
+    $('#updateBanner').style.display = 'none';
+  };
 }
 
 // ------------------------------ Auto-setup ------------------------------
@@ -677,12 +794,21 @@ function finishSetup(ui) {
 // ------------------------------ Init ------------------------------
 (async function init() {
   bindEvents();
+  bindUpdateEvents();
 
   // Primeiro garante que a IA local está pronta (auto-setup).
   await runSetup();
 
   // Carrega o modelo salvo antes de listar (para manter a escolha do usuário).
   state.model = await window.api.getModel();
+
+  // Restaura o idioma de saída escolhido anteriormente.
+  const idiomaSalvo = await window.api.cacheGet('ui:idioma');
+  if (idiomaSalvo) {
+    state.idioma = idiomaSalvo;
+    const sel = $('#langSelect');
+    if (Array.from(sel.options).some((o) => o.value === idiomaSalvo)) sel.value = idiomaSalvo;
+  }
 
   await refreshAiStatus();
   setInterval(refreshAiStatus, 15000);
@@ -693,4 +819,7 @@ function finishSetup(ui) {
   placeholder($('#summaryOutput'), 'Selecione um arquivo (ou a pasta inteira) e clique em "Gerar resumo".');
   placeholder($('#mindmapOutput'), 'Selecione um arquivo (ou a pasta inteira) e clique em "Gerar mapa mental".');
   placeholder($('#exercisesOutput'), 'Escolha as opções e clique em "Gerar exercícios".');
+
+  // Verifica atualizações no GitHub em segundo plano (não bloqueia o uso).
+  checkForUpdates();
 })();

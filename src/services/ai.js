@@ -257,6 +257,33 @@ function clamp(text) {
     : text;
 }
 
+// --------------------------- Idioma / Direcionamento ---------------------------
+// O usuário pode escolher o idioma de saída (ou "auto" = o mesmo do material) e
+// um "foco" que direciona o tom e o conteúdo do resumo (ex.: estudar para prova).
+
+// Monta a instrução de idioma. 'auto' (ou vazio) => mantém o idioma do material.
+function instrucaoIdioma(idioma) {
+  if (!idioma || idioma === 'auto') {
+    return 'Escreva no MESMO idioma predominante do material. Se o material estiver em português, responda em português do Brasil.';
+  }
+  return `Escreva TODA a resposta em ${idioma}, independentemente do idioma do material. Traduza o conteúdo para ${idioma} de forma natural, mantendo termos técnicos reconhecíveis quando apropriado.`;
+}
+
+// Direcionamento do resumo. Cada foco acrescenta orientações específicas.
+const FOCO_RESUMO = {
+  geral: '',
+  prova:
+    'DIRECIONAMENTO: este resumo é para ESTUDAR PARA UMA PROVA. Priorize o que mais costuma cair em avaliações: definições exatas, fórmulas, condições/exceções, passos de resolução e pegadinhas comuns. Destaque em **negrito** os termos-chave que precisam ser memorizados. Ao final, inclua uma seção "## Pontos de atenção para a prova" com os erros mais frequentes e o que não esquecer.',
+  revisao:
+    'DIRECIONAMENTO: este é um resumo de REVISÃO RÁPIDA, para relembrar o conteúdo pouco antes de usar. Seja direto, use tópicos curtos e destaque só o essencial. Evite explicações longas.',
+  aprofundado:
+    'DIRECIONAMENTO: o objetivo é ENTENDER O ASSUNTO A FUNDO. Explique o "porquê" por trás de cada conceito, conecte as ideias, traga a intuição e, quando houver, a lógica das fórmulas e exemplos passo a passo.',
+};
+
+function instrucaoFoco(foco) {
+  return FOCO_RESUMO[foco] || '';
+}
+
 // --------------------------- Resumo ---------------------------
 // Cada nível tem instruções e "orçamento" de tokens próprios, para que
 // "detalhado" seja realmente mais profundo — e não só bullets curtos.
@@ -290,11 +317,14 @@ Escreva parágrafos de verdade, não só listas soltas. Prefira explicar demais 
 async function generateSummary(text, options = {}) {
   const nivelKey = (options.nivel || 'médio');
   const cfg = NIVEL_RESUMO[nivelKey] || NIVEL_RESUMO['médio'];
-  const prompt = `Você é um professor experiente resumindo material de estudo em português do Brasil.
+  const foco = instrucaoFoco(options.foco);
+  const prompt = `Você é um professor experiente resumindo material de estudo.
+
+${instrucaoIdioma(options.idioma)}
 
 ${cfg.instrucao}
-
-Formato em Markdown, começando com "# Resumo".
+${foco ? '\n' + foco + '\n' : ''}
+Formato em Markdown, começando com um título de nível 1 ("# ").
 Use apenas informação presente no material — não invente fatos, datas ou fórmulas.
 Escreva de forma clara e didática, como se explicasse para um aluno.
 
@@ -312,7 +342,8 @@ ${clamp(text)}
 // ------------------------- Mapa mental -------------------------
 // Pedimos JSON estruturado para desenhar o grafo na interface.
 async function generateMindmap(text, options = {}) {
-  const prompt = `Você é um professor criando um MAPA MENTAL de estudo em português do Brasil.
+  const prompt = `Você é um professor criando um MAPA MENTAL de estudo.
+${instrucaoIdioma(options.idioma)}
 Um bom mapa mental NÃO é só uma lista de palavras soltas: cada item precisa EXPLICAR a ideia em poucas palavras.
 
 Responda APENAS com JSON válido, sem texto antes ou depois, exatamente neste formato:
@@ -365,7 +396,9 @@ async function generateExercises(text, options = {}) {
   // meio (era o bug de pedir 10 e receber 6). ~230 tokens por questão + gabarito.
   const numPredict = Math.min(3500, 400 + qtd * 230);
 
-  const prompt = `Você é um professor. Com base no material abaixo, crie uma LISTA DE EXERCÍCIOS em português do Brasil.
+  const prompt = `Você é um professor. Com base no material abaixo, crie uma LISTA DE EXERCÍCIOS.
+
+${instrucaoIdioma(options.idioma)}
 
 REGRAS OBRIGATÓRIAS:
 - Gere EXATAMENTE ${qtd} questões, numeradas de 1 a ${qtd}. Não gere a menos nem a mais.
@@ -379,7 +412,7 @@ REGRAS OBRIGATÓRIAS:
   Use Mermaid só quando a figura ajudar de verdade; caso contrário, não use.
 - Baseie-se somente no material. Não invente fatos.
 
-FORMATO (Markdown):
+FORMATO (Markdown) — traduza os títulos abaixo para o idioma pedido:
 # Lista de Exercícios
 1. Enunciado...
    a) ... b) ... c) ... d)   (apenas se múltipla escolha)
@@ -419,7 +452,7 @@ function clampTo(text, max) {
 
 // "map": gera um resumo parcial e objetivo de um único arquivo.
 async function summarizeOne(name, text, model, signal) {
-  const prompt = `Resuma o material a seguir em português do Brasil, de forma OBJETIVA, listando os conceitos e pontos mais importantes em tópicos. Não invente nada. Máximo ~10 tópicos.
+  const prompt = `Resuma o material a seguir no mesmo idioma do material, de forma OBJETIVA, listando os conceitos e pontos mais importantes em tópicos. Não invente nada. Máximo ~10 tópicos.
 
 ARQUIVO: ${name}
 CONTEÚDO:
