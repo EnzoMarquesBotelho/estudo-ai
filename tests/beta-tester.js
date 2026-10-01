@@ -108,6 +108,35 @@ function restaurarFetch() {
 }
 
 // ---------------------------------------------------------------------------
+// Stub de https.get para simular a API do GitHub (o updater usa 'https', não fetch)
+// ---------------------------------------------------------------------------
+const https = require('https');
+const { EventEmitter } = require('events');
+const _httpsGetOriginal = https.get;
+
+// Faz https.get chamar o callback com uma resposta simulada { statusCode, corpo }.
+function instalarHttpsStub({ statusCode = 200, body = {} }) {
+  https.get = (_options, cb) => {
+    const res = new EventEmitter();
+    res.statusCode = statusCode;
+    // Entrega o corpo de forma assíncrona, como faria a rede real.
+    setImmediate(() => {
+      res.emit('data', typeof body === 'string' ? body : JSON.stringify(body));
+      res.emit('end');
+    });
+    if (cb) cb(res);
+    const req = new EventEmitter();
+    req.setTimeout = () => req; // o updater chama req.setTimeout(...)
+    req.destroy = () => {};
+    return req;
+  };
+}
+
+function restaurarHttps() {
+  https.get = _httpsGetOriginal;
+}
+
+// ---------------------------------------------------------------------------
 // 1. Testes do library (varredura e leitura reais em tests/pasta-teste)
 // ---------------------------------------------------------------------------
 async function testarLibrary() {
@@ -314,17 +343,16 @@ async function testarUpdater() {
     assert(/github\.com\/.+\/.+/.test(updater.REPO_URL), 'REPO_URL não parece uma URL de repositório GitHub.', { severidade: 'baixa' });
   });
 
-  // checkForUpdates com stub de fetch (API do GitHub) — valida o formato de retorno.
+  // checkForUpdates com stub de https (a API do GitHub é consultada via 'https', não fetch).
   await check('Updater', 'checkForUpdates retorna formato esperado (com GitHub simulado)', async () => {
     const sha = 'a'.repeat(40);
-    global.fetch = async () => jsonResponse({ sha });
+    instalarHttpsStub({ statusCode: 200, body: { sha } });
     try {
       const r = await updater.checkForUpdates();
-      restaurarFetch();
       assert(r && r.ok === true, 'checkForUpdates não retornou ok:true com API simulada: ' + JSON.stringify(r));
       assert(typeof r.updateAvailable === 'boolean', 'updateAvailable deveria ser boolean.', { severidade: 'média' });
       assert('canApply' in r, 'Faltou a flag canApply no retorno de checkForUpdates.', { severidade: 'baixa' });
-    } finally { restaurarFetch(); }
+    } finally { restaurarHttps(); }
   });
 }
 
