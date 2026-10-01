@@ -20,3 +20,6 @@ src/renderer/vendor/
 # Scripts/logs temporários
 _*.ps1
 _*.txt
+
+# Configuração local do Kiro (agentes, retomada) — fica só na sua máquina, repo é público
+.kiro/
