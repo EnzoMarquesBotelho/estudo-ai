@@ -546,6 +546,7 @@ async function generateExercisesFolder(files, options = {}, onProgress) {
 
 module.exports = {
   checkStatus,
+  generate,
   generateSummary,
   generateMindmap,
   generateExercises,
