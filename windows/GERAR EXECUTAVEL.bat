@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title Estudo AI - Gerar executavel
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo ============================================
 echo    ESTUDO AI - Gerando o executavel (.exe)
@@ -44,5 +44,5 @@ echo   Para passar a amigos: o PORTATIL e o mais simples
 echo   ^(um arquivo so, nao precisa instalar^).
 echo ============================================
 echo.
-explorer "%~dp0dist"
+explorer "%~dp0..\dist"
 pause

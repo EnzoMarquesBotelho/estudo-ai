@@ -2,7 +2,7 @@
 # Estudo AI - Atualizador local (macOS / Linux)
 # Verifica o GitHub e, se houver atualizacao, aplica com git pull + npm install.
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 echo "============================================"
 echo "       ESTUDO AI - Verificando atualizacoes"
@@ -61,7 +61,11 @@ if ! git diff --quiet; then
   STASHED=1
 fi
 
-# 6. Aplica a atualizacao.
+# 6. Guarda o estado do lockfile antes do pull.
+lock_antes=""
+[ -f package-lock.json ] && lock_antes="$(cksum package-lock.json)"
+
+# 7. Aplica a atualizacao.
 echo
 echo "Atualizando o app (git pull)..."
 if ! git pull --ff-only; then
@@ -71,12 +75,19 @@ if ! git pull --ff-only; then
   exit 1
 fi
 
-# 7. Reinstala dependencias.
-echo
-echo "Atualizando dependencias (npm install)..."
-if ! npm install; then
-  echo "[!] Falha no npm install. Verifique sua conexao e tente de novo."
-  exit 1
+# 8. Reinstala dependencias SO SE o package-lock.json mudou.
+lock_depois=""
+[ -f package-lock.json ] && lock_depois="$(cksum package-lock.json)"
+
+if [ "$lock_antes" != "$lock_depois" ]; then
+  echo
+  echo "As dependencias mudaram. Atualizando (npm install)..."
+  if ! npm install --no-audit --no-fund; then
+    echo "[!] Falha no npm install. Verifique sua conexao e tente de novo."
+    exit 1
+  fi
+else
+  echo "Dependencias sem mudancas; nao precisa reinstalar."
 fi
 
 echo

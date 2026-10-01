@@ -261,6 +261,10 @@ async function applyUpdate(onProgress) {
     stashed = s.ok;
   }
 
+  // Lê o lockfile antes do pull para decidir, depois, se precisa reinstalar deps.
+  const lockPath = path.join(APP_ROOT, 'package-lock.json');
+  const lockAntes = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, 'utf-8') : '';
+
   say('pull', 'Aplicando a atualização…');
   const pulled = await run('git', ['pull', '--ff-only', 'origin', branch]);
   if (!pulled.ok) {
@@ -271,14 +275,18 @@ async function applyUpdate(onProgress) {
     };
   }
 
-  say('npm', 'Atualizando dependências…');
-  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const installed = await run(npmCmd, ['install'], { timeout: 10 * 60 * 1000 });
-  if (!installed.ok) {
-    return {
-      ok: false,
-      error: 'Atualizei o código, mas falhei ao instalar dependências. Rode "npm install" manualmente. Detalhe: ' + (installed.stderr || installed.error),
-    };
+  // Só reinstala dependências se o package-lock.json mudou (mais rápido).
+  const lockDepois = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, 'utf-8') : '';
+  if (lockDepois !== lockAntes) {
+    say('npm', 'Atualizando dependências…');
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const installed = await run(npmCmd, ['install', '--no-audit', '--no-fund'], { timeout: 10 * 60 * 1000 });
+    if (!installed.ok) {
+      return {
+        ok: false,
+        error: 'Atualizei o código, mas falhei ao instalar dependências. Rode "npm install" manualmente. Detalhe: ' + (installed.stderr || installed.error),
+      };
+    }
   }
 
   say('done', 'Atualização concluída! Reinicie o app para usar a nova versão.');

@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title Estudo AI - Atualizar
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo ============================================
 echo        ESTUDO AI - Verificando atualizacoes
@@ -71,7 +71,13 @@ if %errorlevel% neq 0 (
     set STASHED=1
 )
 
-REM --- 6. Aplica a atualizacao ---
+REM --- 6. Guarda o hash do lockfile antes do pull ---
+set "LOCK_ANTES="
+if exist "package-lock.json" (
+    for /f %%h in ('certutil -hashfile "package-lock.json" SHA256 ^| findstr /r "^[0-9a-f]"') do set "LOCK_ANTES=%%h"
+)
+
+REM --- 7. Aplica a atualizacao ---
 echo.
 echo Atualizando o app ^(git pull^)...
 git pull --ff-only
@@ -83,14 +89,23 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM --- 7. Reinstala dependencias se o package.json mudou ---
-echo.
-echo Atualizando dependencias ^(npm install^)...
-call npm install
-if %errorlevel% neq 0 (
-    echo [!] Falha no npm install. Verifique sua conexao e tente de novo.
-    pause
-    exit /b 1
+REM --- 8. Reinstala dependencias SO SE o package-lock.json mudou ---
+set "LOCK_DEPOIS="
+if exist "package-lock.json" (
+    for /f %%h in ('certutil -hashfile "package-lock.json" SHA256 ^| findstr /r "^[0-9a-f]"') do set "LOCK_DEPOIS=%%h"
+)
+
+if not "%LOCK_ANTES%"=="%LOCK_DEPOIS%" (
+    echo.
+    echo As dependencias mudaram. Atualizando ^(npm install^)...
+    call npm install --no-audit --no-fund
+    if %errorlevel% neq 0 (
+        echo [!] Falha no npm install. Verifique sua conexao e tente de novo.
+        pause
+        exit /b 1
+    )
+) else (
+    echo Dependencias sem mudancas; nao precisa reinstalar.
 )
 
 echo.

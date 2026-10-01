@@ -2,7 +2,7 @@
 # Abre o Estudo AI em macOS e Linux.
 # Uso: bash ABRIR.sh
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 if [ ! -d "node_modules" ]; then
   echo "[!] As dependencias ainda nao foram instaladas."

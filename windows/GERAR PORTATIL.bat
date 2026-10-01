@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title Estudo AI - Gerar versao portatil
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo ============================================
 echo    ESTUDO AI - Gerando SO a versao PORTATIL
@@ -37,5 +37,5 @@ echo   Pronto! O portatil esta na pasta "dist":
 echo   "Estudo AI ...portable.exe"
 echo ============================================
 echo.
-explorer "%~dp0dist"
+explorer "%~dp0..\dist"
 pause

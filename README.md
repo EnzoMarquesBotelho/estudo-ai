@@ -20,20 +20,23 @@ App de desktop que gera **resumos**, **mapas mentais** e **listas de exercícios
 
 ## 🚀 Uso rápido (sem terminal)
 
-**Windows** — dê **duplo-clique** nos arquivos `.bat`:
+**Windows** — os atalhos ficam na pasta **`windows/`**. Dê **duplo-clique**:
 
-1. **`INSTALAR.bat`** — checa Node.js e Ollama, instala dependências e baixa o modelo. Rode uma vez.
-2. **`ABRIR ESTUDO AI.bat`** — abre o app (e inicia a IA local).
-3. **`ATUALIZAR.bat`** — atualiza o app para a versão mais nova do GitHub (precisa de Git).
-4. **`GERAR EXECUTAVEL.bat`** — cria o instalador **e** a versão portátil na pasta `dist/`.
-5. **`GERAR PORTATIL.bat`** — cria **só** a versão portátil (um `.exe` que não precisa instalar; a forma mais simples de passar para amigos).
+1. **`windows/INSTALAR.bat`** — checa Node.js e Ollama, instala dependências e baixa o modelo. Rode uma vez.
+2. **`windows/ABRIR ESTUDO AI.bat`** — abre o app (e inicia a IA local).
+3. **`windows/ATUALIZAR.bat`** — atualiza o app para a versão mais nova do GitHub (precisa de Git).
+4. **`windows/GERAR EXECUTAVEL.bat`** — cria o instalador **e** a versão portátil na pasta `dist/`.
+5. **`windows/GERAR PORTATIL.bat`** — cria **só** a versão portátil (um `.exe` que não precisa instalar; a forma mais simples de passar para amigos).
 
-**macOS / Linux** — pelo terminal, na pasta do projeto:
+**macOS / Linux** — os scripts ficam na pasta **`unix/`**. Pelo terminal, na pasta do projeto:
 
 ```bash
-bash INSTALAR.sh   # uma vez: checa Node/Ollama, instala deps e baixa o modelo
-bash ABRIR.sh      # abre o app (e inicia a IA local)
+bash unix/INSTALAR.sh   # uma vez: checa Node/Ollama, instala deps e baixa o modelo
+bash unix/ABRIR.sh      # abre o app (e inicia a IA local)
 ```
+
+> Os scripts funcionam de dentro das pastas `windows/` e `unix/` — eles sobem
+> para a raiz do projeto sozinhos. Não precisa movê-los.
 
 > Em todos os sistemas é preciso ter o **Node.js**. O **Ollama** o app tenta
 > instalar sozinho na primeira execução (veja abaixo).
@@ -122,11 +125,13 @@ você também pode clicar em **"Reiniciar agora"** ou **"Reiniciar depois"**.
 
 **Sem abrir o app** — dê **duplo-clique** no atualizador:
 
-- **Windows:** `ATUALIZAR.bat`
-- **macOS / Linux:** `bash ATUALIZAR.sh`
+- **Windows:** `windows/ATUALIZAR.bat`
+- **macOS / Linux:** `bash unix/ATUALIZAR.sh`
 
-Ele compara sua cópia com o GitHub e, se houver novidade, atualiza o código e as
-dependências. Se já estiver na última versão, apenas avisa.
+Ele compara sua cópia com o GitHub e, se houver novidade, atualiza o código. As
+dependências só são reinstaladas (`npm install`) quando o `package-lock.json`
+muda — se nada mudou, ele pula essa etapa e termina mais rápido. Se já estiver na
+última versão, apenas avisa.
 
 > **Requisitos:** a atualização automática funciona na versão instalada **via Git**
 > (a pasta tem `.git`) e com o **Git** instalado (https://git-scm.com). Se você usa
@@ -279,7 +284,7 @@ As imagens ficam em `tests/screenshots/` e o resultado é anexado ao
 Para passar o app a poucas pessoas próximas, a **versão portátil** é a mais simples:
 um único `.exe` que não precisa instalar.
 
-1. Gere o portátil com **`GERAR PORTATIL.bat`** (ou `npm run build:portable`).
+1. Gere o portátil com **`windows/GERAR PORTATIL.bat`** (ou `npm run build:portable`).
    O arquivo `Estudo AI <versão>.exe` fica na pasta `dist/`.
 2. Envie esse `.exe` para a pessoa (pen drive, nuvem, etc.).
 3. Na primeira execução, o Windows pode avisar que o app não é assinado — veja

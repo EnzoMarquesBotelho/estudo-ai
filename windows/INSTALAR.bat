@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title Estudo AI - Instalacao
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo ============================================
 echo        ESTUDO AI - Preparando o ambiente

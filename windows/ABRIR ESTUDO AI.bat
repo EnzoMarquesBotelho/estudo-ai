@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title Estudo AI
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 REM Verifica se as dependencias ja foram instaladas.
 if not exist "node_modules" (
