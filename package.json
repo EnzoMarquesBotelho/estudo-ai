@@ -18,6 +18,8 @@
     "test:models": "node tests/testar-modelos.js",
     "test:models-inc": "node tests/testar-modelos-incremental.js",
     "test:rag": "node tests/testar-rag.js",
+    "test:classificacao": "node tests/testar-classificacao.js",
+    "test:plano": "node tests/testar-plano.js",
     "test:frontend": "node tests/analise-frontend.js",
     "test:visual": "node tests/validacao-visual.js",
     "test:beta": "node tests/beta-tester.js",

@@ -17,6 +17,7 @@ const state = {
   ragStatus: null,      // status do índice RAG (ou null)
   askScope: 'pasta',    // 'pasta' | 'disciplina'
   askDiscId: null,      // id da disciplina quando askScope === 'disciplina'
+  classification: null, // { [path]: { tipo, origem, mudouDesdeManual } } ou null
 };
 
 // ------------------------------ Helpers ------------------------------
@@ -137,9 +138,50 @@ async function loadLibrary(folder) {
     window.api.startWatch(state.root);
   }
   await loadGrouping(state.root);
+  await loadClassification(state.root);
   renderSidebar();
   populateAskScope();
+  populatePlanoDisc();
   refreshAskStatus();
+}
+
+// Carrega o estado de classificação por tipo salvo (map path -> { tipo, origem, ... }).
+async function loadClassification(folder) {
+  state.classification = null;
+  if (!folder) return;
+  try {
+    const estado = await window.api.getClassification(folder);
+    state.classification = (estado && estado.arquivos) ? estado.arquivos : {};
+  } catch { state.classification = {}; }
+}
+
+// Devolve o registro de classificação de um path (ou null).
+function tipoDoArquivo(path) {
+  const mapa = state.classification || {};
+  return mapa[path] || null;
+}
+
+// Monta o bloco IRMÃO (.file-type) com o badge de tipo + seletor de correção.
+// Não é um container que envolve o .file-item: é um <div> irmão ao lado dele,
+// no mesmo padrão do .file-move da visão por disciplina.
+function typeControlsHtml(path, nome) {
+  const reg = tipoDoArquivo(path);
+  const tipo = reg ? reg.tipo : null;
+  const alerta = reg && reg.mudouDesdeManual ? ' alerta' : '';
+  const badgeTxt = tipo ? tipo : 'sem tipo';
+  const badgeCls = tipo ? ` type-${tipo}` : '';
+  const aviso = reg && reg.mudouDesdeManual ? ' · reavaliar?' : '';
+  const opts = ['aula', 'lista', 'prova', 'trabalho', 'outro']
+    .map((t) => `<option value="${t}"${t === tipo ? ' selected' : ''}>${t}</option>`)
+    .join('');
+  return `
+    <div class="file-type">
+      <span class="type-badge${badgeCls}${alerta}">${escapeHtml(badgeTxt)}${aviso}</span>
+      <select class="type-select" data-type-path="${encodeURIComponent(path)}" aria-label="Tipo de ${escapeHtml(nome)}">
+        <option value="auto">Automático</option>
+        ${opts}
+      </select>
+    </div>`;
 }
 
 function renderNotebooks() {
@@ -152,8 +194,10 @@ function renderNotebooks() {
   for (const nb of state.notebooks) {
     const el = document.createElement('div');
     el.className = 'notebook open';
+    // Cada arquivo: .file-item + um bloco IRMÃO .file-type (badge + seletor).
     const files = nb.files.map((f) =>
-      `<div class="file-item" data-path="${encodeURIComponent(f.path)}" data-name="${encodeURIComponent(f.name)}" title="${f.name}">${f.name}</div>`
+      `<div class="file-item" data-path="${encodeURIComponent(f.path)}" data-name="${encodeURIComponent(f.name)}" title="${f.name}">${f.name}</div>` +
+      typeControlsHtml(f.path, f.name)
     ).join('');
     el.innerHTML = `
       <div class="notebook-header">
@@ -175,6 +219,31 @@ function renderNotebooks() {
         name: decodeURIComponent(item.dataset.name),
       };
       updateTitle();
+    });
+  });
+
+  bindTypeSelects();
+}
+
+// Liga os seletores de tipo (correção manual). stopPropagation para não disparar
+// a seleção do arquivo. "Automático" descarta o tipo manual (clearFileType).
+function bindTypeSelects() {
+  $$('select.type-select').forEach((sel) => {
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      const path = decodeURIComponent(sel.dataset.typePath);
+      const valor = sel.value;
+      let res;
+      if (valor === 'auto') {
+        res = await window.api.clearFileType({ folder: state.root, path });
+      } else {
+        res = await window.api.setFileType({ folder: state.root, path, tipo: valor });
+      }
+      if (!res || !res.ok) return toast((res && res.error) || 'Falha ao definir o tipo.', 'error');
+      state.classification = (res.state && res.state.arquivos) ? res.state.arquivos : state.classification;
+      renderSidebar();
+      toast(valor === 'auto' ? 'Tipo voltou para automático' : `Tipo definido: ${valor}`, 'success');
     });
   });
 }
@@ -207,6 +276,7 @@ function renderSidebar() {
   } else {
     renderNotebooks();
   }
+  populatePlanoDisc();
   updateTitle();
 }
 
@@ -351,6 +421,7 @@ function fileItemHtml(path, destinos, discId) {
   const nome = basenameFromPath(path);
   return `
     <div class="file-item" data-path="${encodeURIComponent(path)}" data-name="${encodeURIComponent(nome)}" title="${escapeHtml(nome)}">${escapeHtml(nome)}</div>
+    ${typeControlsHtml(path, nome)}
     <div class="file-move">
       <select data-move-path="${encodeURIComponent(path)}" data-from="${discId}" aria-label="Mover ${escapeHtml(nome)} para outra disciplina">
         <option value="">Mover para…</option>
@@ -428,6 +499,8 @@ function bindDisciplinaEvents(destinos) {
       updateTitle();
     });
   });
+
+  bindTypeSelects();
 }
 
 function onDiscAction(act, discId) {
@@ -1157,6 +1230,149 @@ function renderSources(fontes) {
   }
 }
 
+// ------------------------------ Classificação por tipo ------------------------------
+
+// Mostra o progresso da classificação (lê data.name — convenção do canal classify).
+function bindClassifyProgress(container) {
+  window.api.onClassifyProgress((p) => {
+    const total = p.total || 0;
+    const current = p.current || 0;
+    const pct = total ? Math.round((current / total) * 100) : 0;
+    container.className = 'group-progress show';
+    container.innerHTML =
+      `<div class="placeholder" style="margin-top:0">Classificando ${current} de ${total}` +
+      `<br><small>${escapeHtml(p.name || '')}</small>` +
+      `<div class="setup-progress-bar" style="margin-top:10px"><div class="setup-progress-fill" style="width:${pct}%"></div></div></div>`;
+  });
+}
+
+// Roda a classificação por tipo da pasta inteira.
+async function runClassify({ fromScratch = false } = {}) {
+  if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
+  const btn = $('#classifyBtn');
+  const cancelBtn = $('#classifyCancelBtn');
+  const progress = $('#classifyProgress');
+
+  btn.disabled = true;
+  if (cancelBtn) cancelBtn.style.display = '';
+  progress.className = 'group-progress show';
+  progress.innerHTML = '<div class="placeholder" style="margin-top:0">Preparando…</div>';
+  bindClassifyProgress(progress);
+
+  let res;
+  try {
+    res = await window.api.runClassification({ folder: state.root, fromScratch });
+  } finally {
+    btn.disabled = false;
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    progress.className = 'group-progress';
+    progress.innerHTML = '';
+    progress.style.display = 'none';
+  }
+
+  if (!res || !res.ok) {
+    return toast((res && res.error) || 'Falha ao classificar.', 'error');
+  }
+  state.classification = (res.state && res.state.arquivos) ? res.state.arquivos : {};
+  renderSidebar();
+  if (res.cancelado) {
+    toast('Classificação cancelada — o que já foi classificado está salvo.', 'info');
+  } else {
+    const pend = (res.pendentes && res.pendentes.length) ? ` (${res.pendentes.length} pendente(s))` : '';
+    toast('Classificação concluída' + pend, 'success');
+  }
+}
+
+// ------------------------------ Plano de estudos ------------------------------
+
+// Popula o seletor de disciplinas do plano a partir do mapeamento (Fase 1).
+function populatePlanoDisc() {
+  const sel = $('#planoDisc');
+  if (!sel) return;
+  const disciplinas = (state.grouping && state.grouping.disciplinas) || [];
+  let html = '<option value="">Selecione uma disciplina</option>';
+  for (const d of disciplinas) {
+    html += `<option value="${d.id}">${escapeHtml(d.nome)}</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+// Mostra o progresso da geração do plano (lê data.message — convenção do canal plan).
+function bindPlanoProgress(container) {
+  window.api.onPlanProgress((p) => {
+    const total = p.total || 0;
+    const current = p.current || 0;
+    const pct = total ? Math.round((current / total) * 100) : 0;
+    container.className = 'group-progress show';
+    container.innerHTML =
+      `<div class="placeholder" style="margin-top:0">Montando o plano ${current} de ${total}` +
+      `<br><small>${escapeHtml(p.message || '')}</small>` +
+      `<div class="setup-progress-bar" style="margin-top:10px"><div class="setup-progress-fill" style="width:${pct}%"></div></div></div>`;
+  });
+}
+
+async function doPlano() {
+  if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
+  const discId = $('#planoDisc').value;
+  if (!discId) return toast('Escolha uma disciplina para o plano.', 'error');
+
+  const out = $('#planoOut');
+  const sources = $('#planoSources');
+  const progress = $('#planoProgress');
+  sources.innerHTML = '';
+  spinner(out, 'Montando o plano de estudos…');
+  bindPlanoProgress(progress);
+
+  let res;
+  try {
+    res = await window.api.generatePlan({ folder: state.root, discId });
+  } finally {
+    progress.className = 'group-progress';
+    progress.innerHTML = '';
+  }
+
+  if (!res || !res.ok) {
+    if (res && res.error === 'SEM_CLASSIFICACAO') {
+      placeholder(out, 'Classifique os materiais desta pasta primeiro (botão "Classificar materiais").');
+      return toast('Classifique os materiais primeiro.', 'warning');
+    }
+    if (res && res.error === 'SEM_MAPEAMENTO') {
+      placeholder(out, 'Organize a pasta por disciplina primeiro (botão "Organizar por disciplina").');
+      return toast('Agrupe por disciplina primeiro.', 'warning');
+    }
+    placeholder(out, '⚠️ ' + ((res && res.error) || 'Falha ao gerar o plano.'));
+    return;
+  }
+
+  out.innerHTML = renderMarkdown(res.markdown || '');
+  renderizarMermaid(out);
+  renderPlanoSources(res.fontes || []);
+  toast('Plano pronto', 'success');
+}
+
+// Desenha as fontes do plano (clicáveis — reusa o fluxo ragOpenSource).
+function renderPlanoSources(fontes) {
+  const wrap = $('#planoSources');
+  wrap.innerHTML = '';
+  if (!fontes.length) return;
+  const titulo = document.createElement('div');
+  titulo.className = 'ask-sources-title';
+  titulo.textContent = 'Fontes';
+  wrap.appendChild(titulo);
+  for (const f of fontes) {
+    const nome = basenameFromPath(f.path);
+    const item = document.createElement('div');
+    item.className = 'source-item';
+    item.title = f.path;
+    item.innerHTML = `<span class="source-name">📄 ${escapeHtml(nome)}</span><span class="source-trecho">${escapeHtml(f.trechoCurto || '')}</span>`;
+    item.addEventListener('click', async () => {
+      const r = await window.api.ragOpenSource({ folder: state.root, path: f.path });
+      if (!r || !r.ok) toast((r && r.error) || 'Não consegui abrir o arquivo.', 'error');
+    });
+    wrap.appendChild(item);
+  }
+}
+
 // ------------------------------ Eventos ------------------------------
 function bindEvents() {
   $('#pickFolderBtn').addEventListener('click', async () => {
@@ -1191,6 +1407,13 @@ function bindEvents() {
   $('#genSummary').addEventListener('click', doSummary);
   $('#genMindmap').addEventListener('click', doMindmap);
   $('#genExercises').addEventListener('click', doExercises);
+
+  // Classificação por tipo de material.
+  $('#classifyBtn').addEventListener('click', () => runClassify({ fromScratch: false }));
+  $('#classifyCancelBtn').addEventListener('click', () => window.api.cancelClassification());
+
+  // Plano de estudos.
+  $('#genPlano').addEventListener('click', doPlano);
 
   // Perguntar (RAG local).
   $('#askIndexBtn').addEventListener('click', () => doIndex({ fromScratch: false }));

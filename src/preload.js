@@ -60,6 +60,24 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('rag:progress', (_e, data) => cb(data));
   },
 
+  // Classificação por tipo de material (Fase 3, Parte 1)
+  getClassification: (folder) => ipcRenderer.invoke('classify:get', folder),
+  runClassification: (args) => ipcRenderer.invoke('classify:run', args),       // { folder, fromScratch }
+  setFileType: (args) => ipcRenderer.invoke('classify:set', args),             // { folder, path, tipo }
+  clearFileType: (args) => ipcRenderer.invoke('classify:clear', args),         // { folder, path }
+  cancelClassification: () => ipcRenderer.invoke('classify:cancel'),
+  onClassifyProgress: (cb) => {
+    ipcRenderer.removeAllListeners('classify:progress');
+    ipcRenderer.on('classify:progress', (_e, data) => cb(data));              // lê data.name
+  },
+
+  // Plano de estudos / Modo prova (Fase 3, Parte 2)
+  generatePlan: (args) => ipcRenderer.invoke('plan:generate', args),           // { folder, discId }
+  onPlanProgress: (cb) => {
+    ipcRenderer.removeAllListeners('plan:progress');
+    ipcRenderer.on('plan:progress', (_e, data) => cb(data));                  // lê data.message
+  },
+
   // Exportar
   exportSave: (title, kind, payload) =>
     ipcRenderer.invoke('export:save', { title, kind, payload }),

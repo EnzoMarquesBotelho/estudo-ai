@@ -10,6 +10,8 @@ const watcher = require('./services/watcher');
 const ai = require('./services/ai');
 const grouping = require('./services/grouping');
 const rag = require('./services/rag');
+const classification = require('./services/classification');
+const plano = require('./services/plano');
 const exporter = require('./services/exporter');
 const setup = require('./services/setup');
 const updater = require('./services/updater');
@@ -18,6 +20,9 @@ let mainWindow = null;
 // AbortController da indexação RAG em curso (null quando ociosa). Permite o
 // cancelamento seguro via rag:cancelIndex. Só uma indexação por vez.
 let indexAbort = null;
+// AbortController da classificação por tipo em curso (null quando ociosa).
+// Espelha indexAbort: uma run por vez, cancelável via classify:cancel.
+let classifyAbort = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -500,6 +505,129 @@ ipcMain.handle('rag:openSource', async (_evt, { folder, path: filePath } = {}) =
   }
   const err = await shell.openPath(filePath);
   return err ? { ok: false, error: err } : { ok: true };
+});
+
+// ---- Classificação por tipo de material (Fase 3, Parte 1) ----
+// Progresso da classificação (espelha sendRagProgress, canal próprio). O
+// renderer lê o campo `name` (convenção verificada: rag emite `name`).
+function sendClassifyProgress(p) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('classify:progress', p);
+  }
+}
+
+// Injetor da chamada ao Ollama para a classificação. Mantém json:true (como o
+// callGenerate do grouping) e numPredict:800. REPASSA o objeto de retorno de
+// ai.generate SEM reescrever `error`, para classification.isOllamaOffline
+// reconhecer o prefixo literal 'Ollama não está rodando' (RF10/fatal-controlado).
+const classifyGenerate = (prompt) =>
+  ai.generate(prompt, {
+    model: store.get('model') || undefined,
+    json: true,
+    numPredict: 800,
+  });
+
+// Achata library.scan(root).notebooks[].files em [fileMeta].
+function flattenScannedFiles(root) {
+  const scan = library.scan(root);
+  const out = [];
+  for (const nb of (scan && scan.notebooks) || []) {
+    for (const f of nb.files || []) out.push(f);
+  }
+  return out;
+}
+
+// Lê o estado de classificação salvo da pasta. Retorna o objeto ou null.
+ipcMain.handle('classify:get', async (_evt, folder) => {
+  const root = resolveFolder(folder);
+  if (!root) return null;
+  return classification.loadState(root);
+});
+
+// Roda a classificação. args: { folder, fromScratch }
+ipcMain.handle('classify:run', async (_evt, args) => {
+  const root = resolveFolder(args && args.folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+
+  const scannedFiles = flattenScannedFiles(root);
+  classifyAbort = new AbortController();
+  try {
+    return await classification.runClassification({
+      rootFolder: root,
+      scannedFiles,
+      readText: readFileTextComTimeout,
+      callGenerate: classifyGenerate,
+      onProgress: sendClassifyProgress,
+      signal: classifyAbort.signal,
+      fromScratch: !!(args && args.fromScratch),
+    });
+  } catch (e) {
+    console.warn('[classify:run] falhou:', e && e.message);
+    return { ok: false, error: (e && e.message) || 'Falha ao classificar.' };
+  } finally {
+    classifyAbort = null;
+  }
+});
+
+// Força o tipo de um arquivo manualmente. args: { folder, path, tipo }
+ipcMain.handle('classify:set', async (_evt, { folder, path: filePath, tipo } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+  const state = classification.loadState(root) || classification.estadoVazio(root);
+  const r = classification.setManual(state, filePath, tipo);
+  if (!r || r.ok === false) return { ok: false, error: (r && r.error) || 'Falha ao definir o tipo.' };
+  classification.saveState(r.state);
+  return { ok: true, state: r.state };
+});
+
+// Volta um arquivo para "automático" (descarta o tipo manual). args: { folder, path }
+ipcMain.handle('classify:clear', async (_evt, { folder, path: filePath } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+  const state = classification.loadState(root) || classification.estadoVazio(root);
+  const novo = classification.clearManual(state, filePath);
+  classification.saveState(novo);
+  return { ok: true, state: novo };
+});
+
+// Cancela a classificação em curso (seguro: salva o progresso parcial).
+ipcMain.handle('classify:cancel', async () => {
+  if (classifyAbort) classifyAbort.abort();
+  return { ok: true };
+});
+
+// ---- Plano de estudos / Modo prova (Fase 3, Parte 2) ----
+// Progresso da geração do plano (um evento por assunto fundamentado). O
+// renderer lê o campo `message` (convenção verificada: grouping emite `message`).
+function sendPlanProgress(p) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('plan:progress', p);
+  }
+}
+
+// Gera o plano de estudos de uma disciplina. args: { folder, discId }
+ipcMain.handle('plan:generate', async (_evt, { folder, discId } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+
+  const classState = classification.loadState(root);
+  const mapping = grouping.loadMapping(root);
+  try {
+    return await plano.gerarPlano({
+      rootFolder: root,
+      discId,
+      mapping,
+      classState,
+      // Reusa rag.ask (Fase 2) com os injetores de embedding/geração já existentes.
+      ask: (a) => rag.ask({ ...a, embed: ragEmbed, generate: ragGenerate }),
+      embed: ragEmbed,
+      generate: ragGenerate,
+      onProgress: sendPlanProgress,
+    });
+  } catch (e) {
+    console.warn('[plan:generate] falhou:', e && e.message);
+    return { ok: false, error: (e && e.message) || 'Falha ao gerar o plano.' };
+  }
 });
 
 // ---- Exportação / compartilhamento ----

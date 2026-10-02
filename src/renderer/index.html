@@ -41,6 +41,15 @@
         </div>
       </div>
 
+      <!-- Classificação por tipo de material (IA). Nada é movido no disco. -->
+      <div class="group-box">
+        <button id="classifyBtn" class="primary">🏷️ Classificar materiais (IA)</button>
+        <div id="classifyProgress" class="group-progress" style="display:none"></div>
+        <div class="group-actions">
+          <button id="classifyCancelBtn" class="ghost small" style="display:none">Cancelar</button>
+        </div>
+      </div>
+
       <div id="notebooks" class="notebooks"></div>
 
       <div class="model-box">
@@ -104,6 +113,7 @@
           <button class="tab" data-tab="mindmap" role="tab" aria-selected="false">Mapa Mental</button>
           <button class="tab" data-tab="exercises" role="tab" aria-selected="false">Exercícios</button>
           <button class="tab" data-tab="ask" role="tab" aria-selected="false">Perguntar</button>
+          <button class="tab" data-tab="plano" role="tab" aria-selected="false">Plano</button>
         </div>
       </header>
 
@@ -171,6 +181,19 @@
         </div>
         <div id="askOutput" class="output markdown"></div>
         <div id="askSources"></div>
+      </section>
+
+      <!-- Painel: Plano de estudos (Modo prova) -->
+      <section class="panel" id="panel-plano">
+        <div class="toolbar">
+          <select id="planoDisc" aria-label="Disciplina do plano">
+            <option value="">Selecione uma disciplina</option>
+          </select>
+          <button id="genPlano" class="primary">Gerar plano</button>
+        </div>
+        <div id="planoProgress" class="group-progress"></div>
+        <div id="planoOut" class="output markdown"></div>
+        <div id="planoSources"></div>
       </section>
     </main>
   </div>

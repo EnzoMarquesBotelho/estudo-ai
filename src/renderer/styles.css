@@ -320,6 +320,17 @@ button.small { padding: 6px 12px; font-size: 13px; }
 .file-move { padding: 4px 10px 6px 22px; border-top: 1px solid var(--bg-3); }
 .file-move select { width: 100%; font-size: 11px; padding: 4px 6px; }
 
+/* ---------------- Classificação por tipo (Fase 3) ---------------- */
+/* Bloco irmão do .file-item com o badge de tipo + seletor de correção. */
+.file-type { padding: 2px 10px 6px 22px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.file-type select { flex: 1; min-width: 90px; font-size: 11px; padding: 3px 6px; }
+.type-badge { font-size: 11px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-dim); background: var(--bg-3); }
+.type-badge.type-prova    { color: var(--bg-3); background: var(--accent-2); border-color: var(--accent-2); }
+.type-badge.type-lista    { color: var(--bg-3); background: var(--accent);   border-color: var(--accent); }
+.type-badge.type-trabalho { color: var(--text); }
+.type-badge.type-aula     { color: var(--text-dim); }
+.type-badge.alerta        { color: var(--red); border-color: var(--red); }
+
 /* ---------------- Perguntar (RAG local) ---------------- */
 .ask-status { font-size: 12px; color: var(--text-dim); flex: 1; }
 #askInput {
