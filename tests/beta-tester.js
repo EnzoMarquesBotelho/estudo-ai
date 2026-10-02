@@ -329,6 +329,115 @@ async function testarAi() {
 }
 
 // ---------------------------------------------------------------------------
+// 4bis. Matriz determinística do resumo: nível × foco (sem rede)
+// ---------------------------------------------------------------------------
+// Cruza os 3 níveis com os 4 focos (12 células) + 3 bordas, afirmando que:
+//   - TODAS as âncoras do nível pedido entram no prompt;
+//   - NENHUMA âncora de OUTROS níveis vaza;
+//   - o foco injeta exatamente seu direcionamento (ou nada, no "geral").
+// Totalmente offline: reusa instalarFetchStub/restaurarFetch/capturado.
+async function testarMatrizResumo() {
+  const ai = require(path.join(SRC, 'services', 'ai.js'));
+
+  // Âncoras definidas num único ponto (manter o acento em 'médio').
+  const ANCORA_NIVEL = {
+    curto: ['resumo ENXUTO'],
+    'médio': ['resumo EQUILIBRADO'],
+    detalhado: ['resumo DETALHADO', '## Conceitos', '## Relações', '## Conclusão'],
+  };
+  const ANCORA_FOCO = {
+    prova: ['ESTUDAR PARA UMA PROVA', '## Pontos de atenção para a prova'],
+    revisao: ['REVISÃO RÁPIDA'],
+    aprofundado: ['ENTENDER O ASSUNTO A FUNDO'],
+  };
+  const NIVEIS = ['curto', 'médio', 'detalhado'];
+  const FOCOS = ['geral', 'prova', 'revisao', 'aprofundado'];
+  const FIXTURE = 'A Lei de Ohm relaciona tensão, corrente e resistência: V = R x I.';
+
+  const AREA = 'IA / Matriz Resumo';
+
+  // 12 células: cada (nível, foco) injeta as instruções certas e nada vaza.
+  for (const nivel of NIVEIS) {
+    for (const foco of FOCOS) {
+      await check(AREA, `nível=${nivel} foco=${foco} injeta instruções certas`, async () => {
+        capturado.prompts = [];
+        instalarFetchStub(() => '# Resumo\nok');
+        try {
+          const r = await ai.generateSummary(FIXTURE, { nivel, foco });
+          assert(r.ok, `generateSummary falhou (nível=${nivel}, foco=${foco}): ` + r.error);
+          const p = capturado.prompts.join('\n');
+
+          // Nível: todas as âncoras do nível pedido presentes.
+          for (const anc of ANCORA_NIVEL[nivel]) {
+            assert(p.includes(anc), `Âncora de nível ausente para nível=${nivel}: "${anc}".`, { sugestao: 'Verificar NIVEL_RESUMO em ai.js.' });
+          }
+          // Nível: nenhuma âncora de OUTROS níveis vaza.
+          for (const outro of NIVEIS) {
+            if (outro === nivel) continue;
+            for (const anc of ANCORA_NIVEL[outro]) {
+              assert(!p.includes(anc), `Âncora do nível "${outro}" vazou no prompt de nível=${nivel}: "${anc}".`, { sugestao: 'Garantir que generateSummary use só a instrução do nível escolhido.' });
+            }
+          }
+          // Foco: 'geral' não injeta nada; os demais injetam todas as suas âncoras.
+          if (foco === 'geral') {
+            for (const outroFoco of Object.keys(ANCORA_FOCO)) {
+              for (const anc of ANCORA_FOCO[outroFoco]) {
+                assert(!p.includes(anc), `Foco "geral" não deveria injetar a âncora de "${outroFoco}": "${anc}".`, { sugestao: 'instrucaoFoco("geral") deve retornar "".' });
+              }
+            }
+          } else {
+            for (const anc of ANCORA_FOCO[foco]) {
+              assert(p.includes(anc), `Âncora de foco ausente para foco=${foco}: "${anc}".`, { sugestao: 'Verificar FOCO_RESUMO em ai.js.' });
+            }
+          }
+        } finally { restaurarFetch(); }
+      });
+    }
+  }
+
+  // Borda (a): foco desconhecido não quebra e não injeta nenhuma âncora de foco.
+  await check(AREA, 'foco desconhecido não injeta âncora de foco', async () => {
+    capturado.prompts = [];
+    instalarFetchStub(() => '# Resumo\nok');
+    try {
+      const r = await ai.generateSummary(FIXTURE, { nivel: 'médio', foco: 'xpto-inexistente' });
+      assert(r.ok, 'Foco desconhecido quebrou generateSummary.', { severidade: 'média', sugestao: 'instrucaoFoco deve retornar "" para foco desconhecido.' });
+      const p = capturado.prompts.join('\n');
+      for (const foco of Object.keys(ANCORA_FOCO)) {
+        for (const anc of ANCORA_FOCO[foco]) {
+          assert(!p.includes(anc), `Foco desconhecido injetou âncora de "${foco}": "${anc}".`, { sugestao: 'instrucaoFoco deve retornar "" para foco desconhecido.' });
+        }
+      }
+    } finally { restaurarFetch(); }
+  });
+
+  // Borda (b): nível ausente cai no default ('médio' => 'resumo EQUILIBRADO').
+  await check(AREA, 'nível ausente usa default (resumo EQUILIBRADO)', async () => {
+    capturado.prompts = [];
+    instalarFetchStub(() => '# Resumo\nok');
+    try {
+      const r = await ai.generateSummary(FIXTURE, { foco: 'geral' });
+      assert(r.ok, 'generateSummary sem nível quebrou.', { sugestao: 'NIVEL_RESUMO deve cair para médio quando o nível é ausente.' });
+      const p = capturado.prompts.join('\n');
+      assert(p.includes('resumo EQUILIBRADO'), 'Nível ausente não caiu para o default "médio" (resumo EQUILIBRADO).', { sugestao: 'Conferir o fallback NIVEL_RESUMO[nivelKey] || NIVEL_RESUMO["médio"].' });
+    } finally { restaurarFetch(); }
+  });
+
+  // Borda (c): detalhado + aprofundado injeta AMBAS as instruções.
+  await check(AREA, 'detalhado + aprofundado injeta ambas as instruções', async () => {
+    capturado.prompts = [];
+    instalarFetchStub(() => '# Resumo\nok');
+    try {
+      const r = await ai.generateSummary(FIXTURE, { nivel: 'detalhado', foco: 'aprofundado' });
+      assert(r.ok, 'generateSummary (detalhado+aprofundado) quebrou.');
+      const p = capturado.prompts.join('\n');
+      assert(p.includes('resumo DETALHADO'), 'Instrução de nível "detalhado" ("resumo DETALHADO") ausente.', { sugestao: 'Verificar NIVEL_RESUMO.detalhado.' });
+      assert(p.includes('ENTENDER O ASSUNTO A FUNDO'), 'Instrução de foco "aprofundado" ("ENTENDER O ASSUNTO A FUNDO") ausente.', { sugestao: 'Verificar FOCO_RESUMO.aprofundado.' });
+    } finally { restaurarFetch(); }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 5. Testes do updater (sem fazer git pull)
 // ---------------------------------------------------------------------------
 async function testarUpdater() {
@@ -461,6 +570,7 @@ async function main() {
   await testarExporter();
   await testarStore();
   await testarAi();
+  await testarMatrizResumo();
   await testarUpdater();
   await testarIntegracaoUI();
 
