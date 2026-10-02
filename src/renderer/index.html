@@ -192,6 +192,14 @@
           <button id="genPlano" class="primary">Gerar plano</button>
         </div>
         <div id="planoProgress" class="group-progress"></div>
+        <div id="planoEmptyState" class="plano-empty" style="display:none">
+          <p class="plano-empty-title">Para montar o plano, primeiro classifique seus materiais.</p>
+          <p class="plano-empty-desc">A CábulIA olha quais arquivos são provas, listas e aulas para priorizar o que mais cai. É rápido e nada sai do seu computador.</p>
+          <div class="plano-empty-actions">
+            <button id="planoClassifyBtn" class="primary">🏷️ Classificar materiais agora</button>
+          </div>
+          <div id="planoClassifyProgress" class="group-progress"></div>
+        </div>
         <div id="planoOut" class="output markdown"></div>
         <div id="planoSources"></div>
       </section>

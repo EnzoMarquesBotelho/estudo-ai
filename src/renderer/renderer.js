@@ -1115,6 +1115,20 @@ function offerEmbedModelDownload() {
   });
 }
 
+// Centraliza o estado "ocupado" da aba Perguntar. Chamada em finally garante
+// que nenhum caminho (sucesso/erro/cancelamento/exceção) deixe a caixa presa.
+function setAskBusy(busy, { label } = {}) {
+  const input = $('#askInput');
+  const btn = $('#askBtn');
+  if (input) {
+    input.disabled = !!busy;
+    input.placeholder = busy
+      ? (label || 'Aguarde…')
+      : 'Faça uma pergunta sobre o seu material…';
+  }
+  if (btn) btn.disabled = !!busy;
+}
+
 // Indexa a pasta. { fromScratch }
 async function doIndex({ fromScratch = false } = {}) {
   if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
@@ -1136,6 +1150,7 @@ async function doIndex({ fromScratch = false } = {}) {
   indexBtn.disabled = true;
   reindexBtn.disabled = true;
   if (cancelBtn) cancelBtn.style.display = '';
+  setAskBusy(true, { label: 'Indexando o material… você poderá perguntar ao terminar.' });
   progress.className = 'group-progress show';
   progress.innerHTML = '<div class="placeholder" style="margin-top:0">Preparando…</div>';
   bindRagProgress(progress);
@@ -1152,6 +1167,7 @@ async function doIndex({ fromScratch = false } = {}) {
     indexBtn.disabled = false;
     reindexBtn.disabled = false;
     if (cancelBtn) cancelBtn.style.display = 'none';
+    setAskBusy(false);
     progress.className = 'group-progress';
     progress.innerHTML = '';
   }
@@ -1173,6 +1189,8 @@ async function doIndex({ fromScratch = false } = {}) {
 
 // Faz uma pergunta sobre o acervo.
 async function doAsk() {
+  // Guarda de reentrância: ignora cliques/Enter enquanto já está respondendo.
+  if ($('#askBtn') && $('#askBtn').disabled) return;
   if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
   const pergunta = ($('#askInput').value || '').trim();
   if (!pergunta) return toast('Digite uma pergunta.', 'error');
@@ -1181,30 +1199,35 @@ async function doAsk() {
   const sources = $('#askSources');
   sources.innerHTML = '';
   spinner(out, 'Buscando no seu material…');
+  setAskBusy(true, { label: 'Buscando resposta…' });
 
-  const res = await window.api.ragAsk({
-    folder: state.root,
-    pergunta,
-    scope: state.askScope,
-    discId: state.askDiscId,
-  });
+  try {
+    const res = await window.api.ragAsk({
+      folder: state.root,
+      pergunta,
+      scope: state.askScope,
+      discId: state.askDiscId,
+    });
 
-  if (!res || !res.ok) {
-    if (res && res.error === 'SEM_INDICE') {
-      placeholder(out, 'Indexe o material primeiro (botão Indexar).');
+    if (!res || !res.ok) {
+      if (res && res.error === 'SEM_INDICE') {
+        placeholder(out, 'Indexe o material primeiro (botão Indexar).');
+        return;
+      }
+      if (res && res.error === 'EMBED_MODEL_AUSENTE') {
+        placeholder(out, 'O modelo de embedding não está instalado. Clique em Indexar para baixá-lo.');
+        offerEmbedModelDownload();
+        return;
+      }
+      placeholder(out, '⚠️ ' + ((res && res.error) || 'Falha ao responder.'));
       return;
     }
-    if (res && res.error === 'EMBED_MODEL_AUSENTE') {
-      placeholder(out, 'O modelo de embedding não está instalado. Clique em Indexar para baixá-lo.');
-      offerEmbedModelDownload();
-      return;
-    }
-    placeholder(out, '⚠️ ' + ((res && res.error) || 'Falha ao responder.'));
-    return;
+
+    out.innerHTML = renderMarkdown(res.resposta || '');
+    renderSources(res.fontes || []);
+  } finally {
+    setAskBusy(false);
   }
-
-  out.innerHTML = renderMarkdown(res.resposta || '');
-  renderSources(res.fontes || []);
 }
 
 // Desenha as fontes citadas (clicáveis — abrem o arquivo no sistema).
@@ -1247,11 +1270,13 @@ function bindClassifyProgress(container) {
 }
 
 // Roda a classificação por tipo da pasta inteira.
-async function runClassify({ fromScratch = false } = {}) {
+// progressEl (opcional) permite reusar o fluxo a partir de outro painel (ex.: Plano),
+// mantendo o mesmo botão/estado global de classificação (#classifyBtn).
+async function runClassify({ fromScratch = false, progressEl } = {}) {
   if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
   const btn = $('#classifyBtn');
   const cancelBtn = $('#classifyCancelBtn');
-  const progress = $('#classifyProgress');
+  const progress = progressEl || $('#classifyProgress');
 
   btn.disabled = true;
   if (cancelBtn) cancelBtn.style.display = '';
@@ -1271,7 +1296,8 @@ async function runClassify({ fromScratch = false } = {}) {
   }
 
   if (!res || !res.ok) {
-    return toast((res && res.error) || 'Falha ao classificar.', 'error');
+    toast((res && res.error) || 'Falha ao classificar.', 'error');
+    return res;
   }
   state.classification = (res.state && res.state.arquivos) ? res.state.arquivos : {};
   renderSidebar();
@@ -1281,6 +1307,7 @@ async function runClassify({ fromScratch = false } = {}) {
     const pend = (res.pendentes && res.pendentes.length) ? ` (${res.pendentes.length} pendente(s))` : '';
     toast('Classificação concluída' + pend, 'success');
   }
+  return res;
 }
 
 // ------------------------------ Plano de estudos ------------------------------
@@ -1311,6 +1338,42 @@ function bindPlanoProgress(container) {
   });
 }
 
+// Mostra o estado vazio da aba Plano, orientando o usuário conforme o motivo.
+// 'classificacao': oferece o atalho de classificar aqui mesmo (#planoClassifyBtn).
+// 'mapeamento': orienta a usar "Organizar por disciplina" na sidebar (sem botão novo).
+function mostrarPlanoEmptyState(motivo) {
+  const empty = $('#planoEmptyState');
+  const title = empty && empty.querySelector('.plano-empty-title');
+  const desc = empty && empty.querySelector('.plano-empty-desc');
+  const btn = $('#planoClassifyBtn');
+  const out = $('#planoOut');
+  if (out) out.innerHTML = '';
+  if (!empty) return;
+
+  if (motivo === 'mapeamento') {
+    if (title) title.textContent = 'Para montar o plano, primeiro organize seus materiais por disciplina.';
+    if (desc) desc.textContent = 'Use o botão "Organizar por disciplina" na barra lateral para agrupar seus arquivos. Depois é só voltar aqui e gerar o plano.';
+    if (btn) btn.style.display = 'none';
+  } else {
+    if (title) title.textContent = 'Para montar o plano, primeiro classifique seus materiais.';
+    if (desc) desc.textContent = 'A CábulIA olha quais arquivos são provas, listas e aulas para priorizar o que mais cai. É rápido e nada sai do seu computador.';
+    if (btn) btn.style.display = '';
+  }
+  empty.style.display = 'flex';
+}
+
+// Classifica a partir da própria aba Plano, reusando o fluxo global de classificação
+// (mesmo IPC classify:run, mesmo botão/estado). O progresso aparece no painel do Plano.
+async function classificarPeloPlano() {
+  const res = await runClassify({ fromScratch: false, progressEl: $('#planoClassifyProgress') });
+  if (res && res.ok && !res.cancelado) {
+    const empty = $('#planoEmptyState');
+    if (empty) empty.style.display = 'none';
+    toast('Pronto! Agora é só gerar o plano.', 'success');
+    placeholder($('#planoOut'), 'Clique em "Gerar plano" para montar seu plano de estudos.');
+  }
+}
+
 async function doPlano() {
   if (!state.root) return toast('Selecione uma pasta primeiro.', 'error');
   const discId = $('#planoDisc').value;
@@ -1319,6 +1382,8 @@ async function doPlano() {
   const out = $('#planoOut');
   const sources = $('#planoSources');
   const progress = $('#planoProgress');
+  const empty = $('#planoEmptyState');
+  if (empty) empty.style.display = 'none';
   sources.innerHTML = '';
   spinner(out, 'Montando o plano de estudos…');
   bindPlanoProgress(progress);
@@ -1333,11 +1398,11 @@ async function doPlano() {
 
   if (!res || !res.ok) {
     if (res && res.error === 'SEM_CLASSIFICACAO') {
-      placeholder(out, 'Classifique os materiais desta pasta primeiro (botão "Classificar materiais").');
+      mostrarPlanoEmptyState('classificacao');
       return toast('Classifique os materiais primeiro.', 'warning');
     }
     if (res && res.error === 'SEM_MAPEAMENTO') {
-      placeholder(out, 'Organize a pasta por disciplina primeiro (botão "Organizar por disciplina").');
+      mostrarPlanoEmptyState('mapeamento');
       return toast('Agrupe por disciplina primeiro.', 'warning');
     }
     placeholder(out, '⚠️ ' + ((res && res.error) || 'Falha ao gerar o plano.'));
@@ -1414,12 +1479,17 @@ function bindEvents() {
 
   // Plano de estudos.
   $('#genPlano').addEventListener('click', doPlano);
+  $('#planoClassifyBtn').addEventListener('click', classificarPeloPlano);
 
   // Perguntar (RAG local).
   $('#askIndexBtn').addEventListener('click', () => doIndex({ fromScratch: false }));
   $('#askReindexBtn').addEventListener('click', () => doIndex({ fromScratch: true }));
   $('#askCancelBtn').addEventListener('click', () => window.api.ragCancelIndex());
   $('#askBtn').addEventListener('click', doAsk);
+  // Enter envia a pergunta; Shift+Enter mantém a quebra de linha.
+  $('#askInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doAsk(); }
+  });
   $('#askScope').addEventListener('change', (e) => {
     const v = e.target.value;
     if (v && v.startsWith('disc:')) {
