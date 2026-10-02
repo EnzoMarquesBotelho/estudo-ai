@@ -21,15 +21,16 @@
  * -----------------------------------------------------------------------------
  * MODO INCREMENTAL (estado em tests/modelos-estado.json)
  * -----------------------------------------------------------------------------
- * - 1ª execução (sem estado salvo): cada modelo é testado COMPLETAMENTE (as 7
- *   funções).
+ * - 1ª execução (sem estado salvo): cada modelo é testado COMPLETAMENTE (as N
+ *   funções canônicas; ver FUNCOES_CANONICAS).
  * - Execuções seguintes: por modelo, só rodamos as funções NOVAS, isto é, as
  *   que ainda não têm resultado salvo para aquele modelo (chave
  *   "<modelo>::<funcao>"). Se nenhuma função for nova, o modelo é pulado.
  * - ROLLBACK por modelo: se, durante o incremental, QUALQUER função daquele
  *   modelo retornar status FALHA (inclui travou/timeout/erro/resposta vazia),
- *   ESSE modelo específico volta a ser testado COMPLETAMENTE (todas as 7
- *   funções). Os demais modelos continuam no modo incremental.
+ *   ESSE modelo específico volta a ser testado COMPLETAMENTE (todas as
+ *   funções canônicas; ver FUNCOES_CANONICAS). Os demais modelos continuam no
+ *   modo incremental.
  * - ⚠️ ATENÇÃO: o status ALERTA (passou com ressalva) NÃO conta como falha e
  *   NÃO dispara rollback. Só FALHA dispara.
  * - FORCAR_COMPLETO=1 ignora o estado e testa TODOS os modelos completamente.
@@ -64,8 +65,8 @@ function forcarCompleto() {
   return process.env.FORCAR_COMPLETO === '1';
 }
 
-// Lista canônica das 7 funções testadas, na ordem em que rodam. Serve de
-// referência de funcoesConhecidas e para detectar funções NOVAS.
+// Lista canônica das funções testadas (ver FUNCOES_CANONICAS), na ordem em que
+// rodam. Serve de referência de funcoesConhecidas e para detectar funções NOVAS.
 const FUNCOES_CANONICAS = [
   'Resumo curto (arquivo)',
   'Resumo médio (arquivo)',
@@ -378,7 +379,7 @@ async function executarFuncoesDoModelo(model, arquivos, log, opcoes = {}) {
 // 1) Decide funcoesAlvo (TODAS se 1ª vez/FORCAR_COMPLETO, senão só as NOVAS).
 // 2) Roda as funções-alvo.
 // 3) ROLLBACK: se, no modo incremental (funcoesAlvo != TODAS), alguma função
-//    FALHOU, reexecuta ESSE modelo COMPLETAMENTE (as 7 funções), sem tocar os
+//    FALHOU, reexecuta ESSE modelo COMPLETAMENTE (todas as funções canônicas), sem tocar os
 //    demais. ⚠️ ALERTA não dispara rollback.
 // ------------------------------------------------------------------
 async function testarModelo(model, arquivos, log, estadoInc, runner = runnerReal, arquivoEstado = ESTADO_INC) {

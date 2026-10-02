@@ -363,8 +363,14 @@ node tests/testar-modelos.js qwen2.5:7b   # testa só um modelo
 
 Para cada modelo ele roda: resumo (curto/médio/detalhado), mapa mental e
 exercícios de um arquivo, além de resumo e mapa da **pasta inteira** (map-reduce).
-Mede o tempo, detecta travamentos/timeout, JSON de mapa inválido e respostas
-vazias/rasas, e salva tudo em **`tests/relatorio-testes.md`**.
+O catálogo também cruza **nível × foco** do resumo com IA real (ex.: médio+prova,
+detalhado+aprofundado), de forma **incremental** (só reexecuta funções novas por
+modelo). Mede o tempo, detecta travamentos/timeout, JSON de mapa inválido e
+respostas vazias/rasas, e salva tudo em **`tests/relatorio-testes.md`**.
+
+Quando o **Ollama não está disponível** (serviço parado ou nenhum modelo
+instalado), o `npm run test:models` **pula de forma limpa, saindo com código 0**
+em vez de falhar.
 
 - Um teste que **trava** além do limite (padrão 150s) é **cancelado de verdade**
   (aborta a geração no Ollama) e marcado como travado. Ao primeiro travamento de
@@ -381,12 +387,18 @@ abrir a janela) e procura bugs funcionais. Ele simula as respostas da IA com um
 "stub" de `fetch`, então roda rápido e offline.
 
 ```bash
-npm run test:beta
+npm run test:beta       # roda a bateria offline (inclui a matriz nível × foco)
+npm run test:beta2      # reexecuta e cruza os resultados para confirmar determinismo
 ```
 
 O que ele verifica:
 - **Leitura de arquivos** (`library`): varredura da pasta, leitura de texto,
   arquivo inexistente, remoção de tags HTML.
+- **Matriz do resumo** (`IA / Matriz Resumo`): cruza **nível × foco** de forma
+  determinística, afirmando que a instrução do nível certo entra no prompt, que
+  as âncoras de outros níveis **não vazam** e que o foco injeta (ou omite) o
+  direcionamento esperado. O `test:beta2` reexecuta a bateria e cruza os
+  resultados para garantir que a matriz é estável.
 - **Exportação** (`exporter`): markdown/HTML dos três tipos, sanitização do nome
   do arquivo, escape de HTML (sem injeção), payload vazio.
 - **Persistência** (`store`): config e cache gravam/leem corretamente.
