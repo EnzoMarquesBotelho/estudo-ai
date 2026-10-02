@@ -331,6 +331,9 @@ button.small { padding: 6px 12px; font-size: 13px; }
 .type-badge.type-aula     { color: var(--text-dim); }
 .type-badge.alerta        { color: var(--red); border-color: var(--red); }
 
+/* Dica de custo do escopo "pasta inteira" na aba Exercícios. */
+.ex-hint { font-size: 12px; color: var(--text-dim); flex-basis: 100%; line-height: 1.4; }
+
 /* ---------------- Perguntar (RAG local) ---------------- */
 .ask-status { font-size: 12px; color: var(--text-dim); flex: 1; }
 #askInput {

@@ -30,6 +30,18 @@ contextBridge.exposeInMainWorld('api', {
   summaryFolder: (files, options) => ipcRenderer.invoke('ai:summaryFolder', { files, options }),
   mindmapFolder: (files, options) => ipcRenderer.invoke('ai:mindmapFolder', { files, options }),
   exercisesFolder: (files, options) => ipcRenderer.invoke('ai:exercisesFolder', { files, options }),
+
+  // Exercícios por disciplina (Fase 3 — fixes). Padrão plan:generate/plan:progress.
+  // O main lê os arquivos da disciplina SOB DEMANDA (economia de memória).
+  exercisesByDiscipline: (args) => ipcRenderer.invoke('ex:byDiscipline', args), // { folder, discId, options }
+  onExProgress: (cb) => {
+    ipcRenderer.removeAllListeners('ex:progress');
+    // Eventos possíveis no canal:
+    //   leitura (handler): { phase:'read', current, total, name }
+    //   map (ai):          { current, total, name, cached }   // SEM phase
+    //   reduce (ai):       { phase:'reduce', message }
+    ipcRenderer.on('ex:progress', (_e, data) => cb(data));
+  },
   onAiProgress: (cb) => {
     ipcRenderer.removeAllListeners('ai:progress');
     ipcRenderer.on('ai:progress', (_e, data) => cb(data));

@@ -6,6 +6,8 @@ const state = {
   notebooks: [],
   selectedFile: null,   // { name, path }
   scope: 'file',        // 'file' | 'all'
+  exEscopo: 'file',     // escopo próprio da aba Exercícios: 'disciplina' | 'file' | 'all'
+  exDiscId: null,       // id da disciplina quando exEscopo === 'disciplina'
   lastResults: {},      // cache em memória: summary/mindmap/exercises
   model: null,          // modelo de IA escolhido pelo usuário
   idioma: 'auto',       // idioma do resultado ('auto' = igual ao material)
@@ -142,6 +144,7 @@ async function loadLibrary(folder) {
   renderSidebar();
   populateAskScope();
   populatePlanoDisc();
+  populateExDisc();
   refreshAskStatus();
 }
 
@@ -277,6 +280,7 @@ function renderSidebar() {
     renderNotebooks();
   }
   populatePlanoDisc();
+  populateExDisc();
   updateTitle();
 }
 
@@ -683,6 +687,28 @@ function bindFolderProgress(container, label) {
   });
 }
 
+// Progresso dos exercícios por disciplina (canal dedicado ex:progress).
+// Espelha o CONTRATO REAL: só o 'reduce' traz phase ('reduce'); o 'read'
+// (leitura sob demanda no main) traz phase:'read'; e a etapa map vem SEM phase,
+// no shape { current, total, name, cached } — honrando o cache como bindFolderProgress.
+function bindExProgress(container, label) {
+  window.api.onExProgress((p) => {
+    if (p.phase === 'reduce') {
+      spinner(container, p.message || 'Criando os exercícios…');
+      return;
+    }
+    if (!p.total) return;
+    const pct = Math.round((p.current / p.total) * 100);
+    const acao = p.phase === 'read'
+      ? 'Lendo'
+      : (p.cached ? '⚡ Reaproveitando' : 'Lendo');
+    container.innerHTML =
+      `<div class="spinner"></div><div class="placeholder">${label}<br>` +
+      `<small>${acao} arquivo ${p.current} de ${p.total}: ${escapeHtml(p.name || '')}</small>` +
+      `<div class="setup-progress-bar" style="margin-top:14px"><div class="setup-progress-fill" style="width:${pct}%"></div></div></div>`;
+  });
+}
+
 // Mostra o texto surgindo em tempo real (streaming) no container.
 function bindStreaming(container) {
   window.api.onAiToken((texto) => {
@@ -766,13 +792,20 @@ async function doExercises() {
   };
   let res;
   bindStreaming(out);
-  if (state.scopeTarget) {
-    const g = await gatherFilesForScope();
-    if (!g.ok) return toast(g.error, 'error');
+  if (state.exEscopo === 'disciplina') {
+    // Modo econômico: o main lê os arquivos da disciplina sob demanda.
+    if (!state.grouping || !((state.grouping.disciplinas || []).length)) {
+      return toast('Organize os materiais por disciplina na barra lateral para usar este modo.', 'error');
+    }
+    if (!state.exDiscId) return toast('Escolha uma disciplina para os exercícios.', 'error');
     spinner(out, 'Criando exercícios da disciplina');
-    bindFolderProgress(out, 'Criando exercícios da disciplina');
-    res = await window.api.exercisesFolder(g.files, opts);
-  } else if (state.scope === 'all') {
+    bindExProgress(out, 'Criando exercícios da disciplina');
+    res = await window.api.exercisesByDiscipline({ folder: state.root, discId: state.exDiscId, options: opts });
+    if (res && res.error === 'SEM_DISCIPLINA') {
+      placeholder(out, '⚠️ Essa disciplina não existe mais. Atualize o agrupamento e tente de novo.');
+      return toast('Disciplina não encontrada.', 'error');
+    }
+  } else if (state.exEscopo === 'all') {
     const g = await gatherFiles();
     if (!g.ok) return toast(g.error, 'error');
     spinner(out, 'Criando exercícios da pasta');
@@ -784,7 +817,7 @@ async function doExercises() {
     spinner(out, 'Criando exercícios');
     res = await window.api.exercises(g.text, opts);
   }
-  if (!res.ok) { placeholder(out, '⚠️ ' + res.error); return toast(res.error, 'error'); }
+  if (!res || !res.ok) { placeholder(out, '⚠️ ' + ((res && res.error) || 'Falha ao gerar exercícios.')); return toast((res && res.error) || 'Falha ao gerar exercícios.', 'error'); }
   out.innerHTML = renderMarkdown(res.text);
   renderizarMermaid(out);
   state.lastResults.exercises = { text: res.text };
@@ -1324,6 +1357,40 @@ function populatePlanoDisc() {
   sel.innerHTML = html;
 }
 
+// Popula o seletor de disciplinas da aba Exercícios (mesmo mapeamento da Fase 1).
+// Também ajusta o escopo padrão: com disciplinas disponíveis, começa no modo
+// econômico 'disciplina' (pré-selecionando a disciplina da sidebar, se houver);
+// sem agrupamento, cai para 'file'. O <select> é a fonte visível do estado.
+function populateExDisc() {
+  const sel = $('#exDisc');
+  const escopoSel = $('#exEscopo');
+  if (!sel) return;
+  const disciplinas = (state.grouping && state.grouping.disciplinas) || [];
+  let html = '<option value="">Selecione uma disciplina</option>';
+  for (const d of disciplinas) {
+    html += `<option value="${d.id}">${escapeHtml(d.nome)}</option>`;
+  }
+  sel.innerHTML = html;
+
+  if (disciplinas.length) {
+    state.exEscopo = 'disciplina';
+    // Pré-seleciona a disciplina do escopo atual da sidebar, quando existir.
+    const alvo = state.scopeTarget;
+    const preId = alvo && (alvo.kind === 'disciplina' ? alvo.id : alvo.discId);
+    const existe = preId && disciplinas.some((d) => d.id === preId);
+    state.exDiscId = existe ? preId : null;
+    sel.value = existe ? preId : '';
+  } else {
+    state.exEscopo = 'file';
+    state.exDiscId = null;
+    sel.value = '';
+  }
+  if (escopoSel) escopoSel.value = state.exEscopo;
+  sel.style.display = state.exEscopo === 'disciplina' ? '' : 'none';
+  const hint = $('#exEscopoHint');
+  if (hint) hint.style.display = state.exEscopo === 'all' ? '' : 'none';
+}
+
 // Mostra o progresso da geração do plano (lê data.message — convenção do canal plan).
 function bindPlanoProgress(container) {
   window.api.onPlanProgress((p) => {
@@ -1472,6 +1539,16 @@ function bindEvents() {
   $('#genSummary').addEventListener('click', doSummary);
   $('#genMindmap').addEventListener('click', doMindmap);
   $('#genExercises').addEventListener('click', doExercises);
+
+  // Escopo próprio da aba Exercícios (disciplina / arquivo / pasta inteira).
+  $('#exEscopo').addEventListener('change', (e) => {
+    state.exEscopo = e.target.value;
+    const disc = $('#exDisc');
+    const hint = $('#exEscopoHint');
+    if (disc) disc.style.display = state.exEscopo === 'disciplina' ? '' : 'none';
+    if (hint) hint.style.display = state.exEscopo === 'all' ? '' : 'none';
+  });
+  $('#exDisc').addEventListener('change', (e) => { state.exDiscId = e.target.value || null; });
 
   // Classificação por tipo de material.
   $('#classifyBtn').addEventListener('click', () => runClassify({ fromScratch: false }));

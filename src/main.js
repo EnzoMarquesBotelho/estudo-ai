@@ -152,6 +152,59 @@ ipcMain.handle('ai:exercisesFolder', async (_evt, { files, options }) =>
   ai.generateExercisesFolder(files, { ...options, onToken: sendAiToken }, sendAiProgress)
 );
 
+// ---- Exercícios por DISCIPLINA (Fase 3 — fixes) ----
+// Progresso dedicado (espelha sendAiProgress/sendPlanProgress, canal próprio
+// 'ex:progress'). Nele convivem a leitura sob demanda ({ phase:'read', ... })
+// e os eventos do map-reduce reemitidos pelo generateExercisesFolder.
+function sendExProgress(p) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('ex:progress', p);
+  }
+}
+
+// Último segmento do caminho (nome do arquivo), por string — sem tocar o disco.
+function basename(p) {
+  return String(p).split(/[\\/]/).pop();
+}
+
+// Gera exercícios de UMA disciplina lendo os arquivos SOB DEMANDA no main (um
+// por vez, com timeout) — economia de memória. Reusa grouping.loadMapping
+// (Fase 1) e ai.generateExercisesFolder (map-reduce). args: { folder, discId, options }.
+// SÓ LEITURA (INV1): nunca escreve/move arquivo do usuário.
+ipcMain.handle('ex:byDiscipline', async (_evt, { folder, discId, options } = {}) => {
+  const root = resolveFolder(folder);
+  if (!root) return { ok: false, error: 'Pasta inválida.' };
+
+  const mapping = grouping.loadMapping(root);
+  const disc = mapping && (mapping.disciplinas || []).find((d) => d.id === discId);
+  if (!disc) return { ok: false, error: 'SEM_DISCIPLINA' };
+
+  const paths = disc.arquivos || [];
+  if (!paths.length) return { ok: false, error: 'A disciplina não tem arquivos.' };
+
+  // Leitura sob demanda, um arquivo por vez (SÓ LEITURA — INV1/INV7). Monta o
+  // array mínimo para o map-reduce; o progresso de leitura vai por ex:progress.
+  const files = [];
+  for (let i = 0; i < paths.length; i++) {
+    const p = paths[i];
+    sendExProgress({ phase: 'read', current: i + 1, total: paths.length, name: basename(p) });
+    const r = await readFileTextComTimeout(p);
+    if (r && r.ok && r.text && r.text.trim()) {
+      files.push({ name: basename(p), text: r.text, path: p });
+    }
+  }
+  if (!files.length) return { ok: false, error: 'Nenhum arquivo legível nesta disciplina.' };
+
+  // generateExercisesFolder reemite no canal dedicado:
+  //   map    -> { current, total, name, cached }  (SEM phase)
+  //   reduce -> { phase:'reduce', message }
+  return ai.generateExercisesFolder(
+    files,
+    { ...options, onToken: sendAiToken },
+    sendExProgress
+  );
+});
+
 // ---- Agrupamento virtual por disciplina (100% virtual: nada no disco do usuário) ----
 // Progresso do agrupamento (espelha sendAiProgress, canal próprio).
 function sendGroupingProgress(p) {

@@ -149,6 +149,14 @@
       <!-- Painel: Exercícios -->
       <section class="panel" id="panel-exercises">
         <div class="toolbar">
+          <select id="exEscopo" aria-label="Escopo dos exercícios">
+            <option value="disciplina">Por disciplina (econômico)</option>
+            <option value="file">Arquivo selecionado</option>
+            <option value="all">Pasta inteira (mais pesado)</option>
+          </select>
+          <select id="exDisc" aria-label="Disciplina dos exercícios" style="display:none">
+            <option value="">Selecione uma disciplina</option>
+          </select>
           <select id="exQtd" aria-label="Quantidade de questões">
             <option>3</option><option selected>5</option><option>8</option><option>10</option>
           </select>
@@ -159,6 +167,7 @@
           </select>
           <button id="genExercises" class="primary">Gerar exercícios</button>
           <button id="exportExercises" class="ghost">Exportar</button>
+          <span id="exEscopoHint" class="ex-hint" style="display:none">Lê e processa todos os arquivos — pode consumir mais tempo e memória. Ideal para prova de conhecimento geral.</span>
         </div>
         <div id="exercisesOutput" class="output markdown"></div>
       </section>
