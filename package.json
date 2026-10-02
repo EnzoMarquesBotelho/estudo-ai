@@ -23,7 +23,9 @@
     "test:frontend": "node tests/analise-frontend.js",
     "test:visual": "node tests/validacao-visual.js",
     "test:beta": "node tests/beta-tester.js",
-    "test:beta2": "node tests/beta-tester-cruzado.js"
+    "test:beta2": "node tests/beta-tester-cruzado.js",
+    "test:stress": "node tests/beta-tester-estresse.js",
+    "test:stress-ia": "node tests/beta-tester-estresse-ia.js"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
