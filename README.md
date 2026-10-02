@@ -3,7 +3,7 @@
 > O nerd que faz a sua cola. App de estudos com IA 100% local.
 
 
-App de desktop que gera **resumos**, **mapas mentais** e **listas de exercícios** a partir de uma pasta de estudos, usando **IA local** (Ollama). Tudo roda na sua máquina — nenhuma informação vai para a nuvem.
+App de desktop que gera **resumos**, **mapas mentais** e **listas de exercícios**, **responde perguntas** sobre o seu material (RAG) e monta um **plano de estudos** a partir de uma pasta de estudos, usando **IA local** (Ollama). Tudo roda na sua máquina — nenhuma informação vai para a nuvem.
 
 ## Recursos
 
@@ -231,6 +231,64 @@ O prompt instrui o modelo a responder **somente** com base nos trechos
 recuperados e a dizer claramente quando a resposta **não está** no material. As
 fontes exibidas são sempre os trechos realmente consultados — inclusive quando a
 resposta é "não encontrei isso no material".
+
+## 🏷️ Classificar materiais por tipo (IA)
+
+Além de organizar por disciplina, o app pode marcar **que tipo** é cada arquivo:
+**aula**, **lista**, **prova**, **trabalho** ou **outro**. Isso alimenta o
+**Plano de estudos** (abaixo) e ajuda a saber, de relance, o que é cada material.
+
+> **100% virtual — nada muda no disco.** Assim como o agrupamento por disciplina,
+> a classificação **não move, não renomeia e não apaga** nada. Ela guarda só um
+> **mapeamento** (qual arquivo é de qual tipo) na pasta de dados do app, junto das
+> suas configurações. Os arquivos originais ficam exatamente onde estão.
+
+### Como disparar
+
+Na barra lateral há o botão **"🏷️ Classificar materiais (IA)"**. É uma ação
+**sob demanda** (nunca automática): o app primeiro tenta uma **heurística barata**
+(pelo nome do arquivo, extensão e pistas do conteúdo) e só escala para a **IA
+local** nos casos ambíguos, em **lotes**, com progresso e cancelamento.
+
+### Correção manual
+
+Se a detecção errar, você pode **forçar o tipo** de um arquivo na mão. A correção
+manual **persiste** e tem **prioridade** sobre a detecção automática — numa
+reclassificação futura ela não é sobrescrita.
+
+### Incremental
+
+A classificação é **incremental**: ao reclassificar depois de adicionar ou alterar
+arquivos, só os **novos ou modificados** são reprocessados (detectados por data de
+modificação + tamanho). O que já estava classificado — e principalmente as suas
+correções manuais — é preservado.
+
+## 📅 Plano de estudos (modo prova)
+
+A aba **Plano** monta um **guia de estudo por disciplina**, priorizando **o que
+mais cai**. Ele cruza a **classificação por tipo** (acima) com o conteúdo do seu
+material, dando mais peso ao que costuma valer mais nota.
+
+### Como funciona a priorização
+
+Cada assunto recebe um **escore** = soma dos **pesos por tipo** de material ×
+um **fator de recência** (materiais mais recentes pesam um pouco mais). Em geral
+**provas e listas pesam mais** que trabalhos e aulas na hora de priorizar — a
+ideia é destacar o que historicamente mais aparece em avaliação. O resultado é um
+texto em Markdown, **fundamentado apenas no seu material** (anti-alucinação), com
+indicação da origem da priorização.
+
+### Como usar
+
+1. Classifique os materiais primeiro (seção **"Classificar materiais por tipo"**
+   acima) — o plano usa esses tipos para priorizar.
+2. Vá até a aba **Plano**, escolha uma **disciplina** no seletor e clique em
+   **"Gerar plano"**.
+3. O guia aparece priorizando os assuntos que mais tendem a cair.
+
+> Como o Plano se apoia na classificação e no agrupamento por disciplina, ele
+> aproveita as Fases anteriores (disciplinas e tipos) sem reprocessar nada no
+> disco.
 
 ## 🔄 Atualizar o app
 
