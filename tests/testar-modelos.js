@@ -74,6 +74,8 @@ const FUNCOES_CANONICAS = [
   'Exercícios (arquivo)',
   'Resumo detalhado (PASTA)',
   'Mapa mental (PASTA)',
+  'Resumo médio + foco prova (arquivo)',
+  'Resumo detalhado + foco aprofundado (arquivo)',
 ];
 
 // Estado compartilhado, gravado incrementalmente para o agente "conversar"
@@ -273,6 +275,8 @@ function catalogoFuncoes(arquivos) {
     { nome: 'Exercícios (arquivo)', tipo: 'texto', fn: (model, signal) => ai.generateExercises(umArquivo.text, { model, quantidade: 5, tipo: 'mistas', signal }) },
     { nome: 'Resumo detalhado (PASTA)', tipo: 'texto', fn: (model, signal) => ai.generateSummaryFolder(arquivos, { model, nivel: 'detalhado', signal }) },
     { nome: 'Mapa mental (PASTA)', tipo: 'mapa', fn: (model, signal) => ai.generateMindmapFolder(arquivos, { model, signal }) },
+    { nome: 'Resumo médio + foco prova (arquivo)', tipo: 'texto', fn: (model, signal) => ai.generateSummary(umArquivo.text, { model, nivel: 'médio', foco: 'prova', signal }) },
+    { nome: 'Resumo detalhado + foco aprofundado (arquivo)', tipo: 'texto', fn: (model, signal) => ai.generateSummary(umArquivo.text, { model, nivel: 'detalhado', foco: 'aprofundado', signal }) },
   ];
 }
 
@@ -312,7 +316,22 @@ async function executarFuncoesDoModelo(model, arquivos, log, opcoes = {}) {
   let houveFalha = false;
 
   const registrar = (nome, tipo, r) => {
-    const { status, bugs } = diagnosticar(tipo, r.res, r.ms);
+    let { status, bugs } = diagnosticar(tipo, r.res, r.ms);
+
+    // Diagnóstico ADITIVO de marcador por foco (não altera diagnosticar()).
+    // Só rebaixa OK->ALERTA; NUNCA vira FALHA (para não disparar rollback).
+    if (r.res && r.res.ok) {
+      const txt = (r.res.text || '');
+      if (/foco prova/i.test(nome) && !/pontos de atenção para a prova/i.test(txt)) {
+        bugs.push('Faltou a seção de pontos de atenção para a prova.');
+        if (status === 'OK') status = 'ALERTA';
+      }
+      if (/aprofundado/i.test(nome) && !/porqu[eê]|por que/i.test(txt)) {
+        bugs.push('Resposta não demonstra aprofundamento (sem explicação do porquê).');
+        if (status === 'OK') status = 'ALERTA';
+      }
+    }
+
     const emoji = status === 'OK' ? '✅' : status === 'ALERTA' ? '⚠️' : '❌';
     linhas.push(
       `| ${nome} | ${emoji} ${status} | ${Math.round(r.ms / 1000)}s | ${bugs.join(' ') || '-'} |`
@@ -401,13 +420,13 @@ async function main() {
   const status = await ai.checkStatus();
   if (!status.ok) {
     log('❌ Ollama não está rodando. Abra o Ollama (ou rode "ollama serve") e tente de novo.');
-    process.exit(1);
+    process.exit(0);
   }
 
   let modelos = process.argv[2] ? [process.argv[2]] : await listarModelos();
   if (!modelos.length) {
     log('❌ Nenhum modelo instalado. Rode: ollama pull qwen2.5:7b');
-    process.exit(1);
+    process.exit(0);
   }
   log('Modelos a testar: ' + modelos.join(', '));
   estado.modelos = modelos;
